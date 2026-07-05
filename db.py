@@ -1,25 +1,110 @@
 import logging
+import json
+import aiohttp
 from datetime import datetime
 from typing import Optional, List, Dict, Any
-import libsql_client
 
 logger = logging.getLogger(__name__)
 
 
+class TursoClient:
+    """Turso HTTP API client"""
+    
+    def __init__(self, url: str, token: str):
+        self.url = url.rstrip('/')
+        self.token = token
+        
+        # Convert libsql:// to https:// if needed
+        if self.url.startswith("libsql://"):
+            self.url = self.url.replace("libsql://", "https://")
+        self.url = self.url.replace(":443", "")
+        logger.info(f"✅ Turso client initialized with URL: {self.url}")
+    
+    def _format_params(self, params):
+        """Format parameters for Turso HTTP API"""
+        if not params:
+            return []
+        formatted = []
+        for p in params:
+            if p is None:
+                formatted.append({"type": "null"})
+            elif isinstance(p, bool):
+                formatted.append({"type": "integer", "value": 1 if p else 0})
+            elif isinstance(p, int):
+                formatted.append({"type": "integer", "value": p})
+            elif isinstance(p, float):
+                formatted.append({"type": "real", "value": p})
+            elif isinstance(p, (list, dict)):
+                formatted.append({"type": "text", "value": json.dumps(p, ensure_ascii=False)})
+            else:
+                formatted.append({"type": "text", "value": str(p)})
+        return formatted
+    
+    async def execute(self, sql: str, params: list = None):
+        """Execute SQL query via Turso HTTP API"""
+        async with aiohttp.ClientSession() as session:
+            headers = {
+                "Authorization": f"Bearer {self.token}",
+                "Content-Type": "application/json"
+            }
+            payload = {"stmt": {"sql": sql}}
+            if params:
+                payload["stmt"]["args"] = self._format_params(params)
+            
+            full_url = f"{self.url}/v1/execute"
+            
+            try:
+                async with session.post(full_url, headers=headers, json=payload) as resp:
+                    if resp.status != 200:
+                        error = await resp.text()
+                        raise Exception(f"Turso error {resp.status}: {error}")
+                    data = await resp.json()
+                    if data.get("error"):
+                        raise Exception(f"Turso error: {data['error']}")
+                    return data
+            except aiohttp.ClientError as e:
+                raise Exception(f"Connection error: {e}")
+
+
+def extract_value(data):
+    """Extract value from Turso response"""
+    if isinstance(data, dict) and 'value' in data:
+        return data['value']
+    return data
+
+
+def ensure_list(data):
+    """Ensure data is a list"""
+    if data is None:
+        return []
+    if isinstance(data, list):
+        return data
+    if isinstance(data, str):
+        try:
+            parsed = json.loads(data)
+            if isinstance(parsed, list):
+                return parsed
+            return [parsed] if parsed else []
+        except:
+            return []
+    if isinstance(data, dict):
+        return [data] if data else []
+    return [data] if data else []
+
+
 class Database:
     def __init__(self, url: str, token: str):
-        self.client = libsql_client.create_client_sync(
-            url=url,
-            auth_token=token
-        )
+        self.client = TursoClient(url, token)
         self._init_tables()
-
+    
     def _init_tables(self):
         """Initialize database tables if they don't exist."""
         try:
-            with self.client.transaction() as tx:
+            import asyncio
+            
+            async def init():
                 # Users table
-                tx.execute("""
+                await self.client.execute("""
                     CREATE TABLE IF NOT EXISTS users (
                         telegram_id INTEGER PRIMARY KEY,
                         username TEXT,
@@ -29,188 +114,211 @@ class Database:
                         created_at TEXT DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
-
+                
                 # History table
-                tx.execute("""
+                await self.client.execute("""
                     CREATE TABLE IF NOT EXISTS history (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
                         telegram_id INTEGER,
                         input TEXT,
                         output TEXT,
                         style TEXT,
-                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
-
+                
                 # Last requests table
-                tx.execute("""
+                await self.client.execute("""
                     CREATE TABLE IF NOT EXISTS last_request (
                         telegram_id INTEGER PRIMARY KEY,
                         input TEXT,
                         output TEXT,
                         style TEXT,
-                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                        FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
-
-            logger.info("Database tables initialized successfully")
+                
+                logger.info("✅ Database tables initialized successfully")
+            
+            asyncio.run(init())
+            
         except Exception as e:
             logger.error(f"Error initializing database: {e}")
             raise
-
-    def get_or_create_user(self, telegram_id: int, username: Optional[str] = None, first_name: Optional[str] = None):
+    
+    async def get_or_create_user(self, telegram_id: int, username: Optional[str] = None, first_name: Optional[str] = None):
         """Get user or create if doesn't exist."""
         try:
-            with self.client.transaction() as tx:
-                # Check if user exists
-                result = tx.execute(
-                    "SELECT * FROM users WHERE telegram_id = ?",
-                    (telegram_id,)
+            # Check if user exists
+            result = await self.client.execute(
+                "SELECT * FROM users WHERE telegram_id = ?",
+                (telegram_id,)
+            )
+            
+            rows = result.get('result', {}).get('rows', [])
+            
+            if not rows:
+                # Create new user
+                await self.client.execute(
+                    """
+                    INSERT INTO users (telegram_id, username, first_name, daily_requests)
+                    VALUES (?, ?, ?, 0)
+                    """,
+                    (telegram_id, username, first_name)
                 )
-
-                if not result.rows:
-                    # Create new user
-                    tx.execute(
-                        """
-                        INSERT INTO users (telegram_id, username, first_name, daily_requests)
-                        VALUES (?, ?, ?, 0)
-                        """,
-                        (telegram_id, username, first_name)
-                    )
-                    return {
-                        "telegram_id": telegram_id,
-                        "username": username,
-                        "first_name": first_name,
-                        "daily_requests": 0,
-                        "last_request_date": None
-                    }
-
-                row = result.rows[0]
                 return {
-                    "telegram_id": row[0],
-                    "username": row[1],
-                    "first_name": row[2],
-                    "daily_requests": row[3],
-                    "last_request_date": row[4]
+                    "telegram_id": telegram_id,
+                    "username": username,
+                    "first_name": first_name,
+                    "daily_requests": 0,
+                    "last_request_date": None
                 }
-
+            
+            row = rows[0]
+            if isinstance(row, (list, tuple)):
+                return {
+                    "telegram_id": extract_value(row[0]),
+                    "username": extract_value(row[1]),
+                    "first_name": extract_value(row[2]),
+                    "daily_requests": extract_value(row[3]) or 0,
+                    "last_request_date": extract_value(row[4])
+                }
+            elif isinstance(row, dict):
+                return {
+                    "telegram_id": extract_value(row.get('telegram_id')),
+                    "username": extract_value(row.get('username')),
+                    "first_name": extract_value(row.get('first_name')),
+                    "daily_requests": extract_value(row.get('daily_requests')) or 0,
+                    "last_request_date": extract_value(row.get('last_request_date'))
+                }
+            
+            return None
+            
         except Exception as e:
             logger.error(f"Error getting/creating user: {e}")
             raise
-
-    def check_daily_limit(self, telegram_id: int) -> tuple[bool, int]:
+    
+    async def check_daily_limit(self, telegram_id: int) -> tuple[bool, int]:
         """Check if user has reached daily limit. Returns (can_proceed, current_requests)."""
         try:
             today = datetime.now().date().isoformat()
-
-            with self.client.transaction() as tx:
-                # Get user
-                result = tx.execute(
-                    "SELECT daily_requests, last_request_date FROM users WHERE telegram_id = ?",
-                    (telegram_id,)
+            
+            result = await self.client.execute(
+                "SELECT daily_requests, last_request_date FROM users WHERE telegram_id = ?",
+                (telegram_id,)
+            )
+            
+            rows = result.get('result', {}).get('rows', [])
+            
+            if not rows:
+                return True, 0
+            
+            row = rows[0]
+            if isinstance(row, (list, tuple)):
+                daily_requests = extract_value(row[0]) or 0
+                last_request_date = extract_value(row[1])
+            else:
+                daily_requests = extract_value(row.get('daily_requests')) or 0
+                last_request_date = extract_value(row.get('last_request_date'))
+            
+            # Reset if new day
+            if last_request_date != today:
+                await self.client.execute(
+                    "UPDATE users SET daily_requests = 0, last_request_date = ? WHERE telegram_id = ?",
+                    (today, telegram_id)
                 )
-
-                if not result.rows:
-                    return True, 0
-
-                daily_requests = result.rows[0][0]
-                last_request_date = result.rows[0][1]
-
-                # Reset if new day
-                if last_request_date != today:
-                    tx.execute(
-                        "UPDATE users SET daily_requests = 0, last_request_date = ? WHERE telegram_id = ?",
-                        (today, telegram_id)
-                    )
-                    return True, 0
-
-                return daily_requests < 50, daily_requests
-
+                return True, 0
+            
+            return daily_requests < 50, daily_requests
+            
         except Exception as e:
             logger.error(f"Error checking daily limit: {e}")
             return False, 0
-
-    def increment_daily_requests(self, telegram_id: int):
+    
+    async def increment_daily_requests(self, telegram_id: int):
         """Increment daily request count."""
         try:
             today = datetime.now().date().isoformat()
-
-            with self.client.transaction() as tx:
-                tx.execute(
-                    """
-                    UPDATE users 
-                    SET daily_requests = daily_requests + 1, 
-                        last_request_date = ?
-                    WHERE telegram_id = ?
-                    """,
-                    (today, telegram_id)
-                )
-
+            
+            await self.client.execute(
+                """
+                UPDATE users 
+                SET daily_requests = daily_requests + 1, 
+                    last_request_date = ?
+                WHERE telegram_id = ?
+                """,
+                (today, telegram_id)
+            )
+            
         except Exception as e:
             logger.error(f"Error incrementing daily requests: {e}")
             raise
-
-    def save_history(self, telegram_id: int, input_text: str, output: str, style: str):
+    
+    async def save_history(self, telegram_id: int, input_text: str, output: str, style: str):
         """Save to history."""
         try:
-            with self.client.transaction() as tx:
-                tx.execute(
-                    """
-                    INSERT INTO history (telegram_id, input, output, style)
-                    VALUES (?, ?, ?, ?)
-                    """,
-                    (telegram_id, input_text, output, style)
-                )
-
+            await self.client.execute(
+                """
+                INSERT INTO history (telegram_id, input, output, style)
+                VALUES (?, ?, ?, ?)
+                """,
+                (telegram_id, input_text, output, style)
+            )
+            
         except Exception as e:
             logger.error(f"Error saving history: {e}")
             raise
-
-    def save_last_request(self, telegram_id: int, input_text: str, output: str, style: str):
+    
+    async def save_last_request(self, telegram_id: int, input_text: str, output: str, style: str):
         """Save or update last request."""
         try:
-            with self.client.transaction() as tx:
-                tx.execute(
-                    """
-                    INSERT OR REPLACE INTO last_request (telegram_id, input, output, style, created_at)
-                    VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
-                    """,
-                    (telegram_id, input_text, output, style)
-                )
-
+            await self.client.execute(
+                """
+                INSERT OR REPLACE INTO last_request (telegram_id, input, output, style, created_at)
+                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+                """,
+                (telegram_id, input_text, output, style)
+            )
+            
         except Exception as e:
             logger.error(f"Error saving last request: {e}")
             raise
-
-    def get_last_request(self, telegram_id: int) -> Optional[Dict[str, Any]]:
+    
+    async def get_last_request(self, telegram_id: int) -> Optional[Dict[str, Any]]:
         """Get last request for user."""
         try:
-            with self.client.transaction() as tx:
-                result = tx.execute(
-                    "SELECT input, output, style FROM last_request WHERE telegram_id = ?",
-                    (telegram_id,)
-                )
-
-                if not result.rows:
-                    return None
-
-                row = result.rows[0]
+            result = await self.client.execute(
+                "SELECT input, output, style FROM last_request WHERE telegram_id = ?",
+                (telegram_id,)
+            )
+            
+            rows = result.get('result', {}).get('rows', [])
+            
+            if not rows:
+                return None
+            
+            row = rows[0]
+            if isinstance(row, (list, tuple)):
                 return {
-                    "input": row[0],
-                    "output": row[1],
-                    "style": row[2]
+                    "input": extract_value(row[0]),
+                    "output": extract_value(row[1]),
+                    "style": extract_value(row[2])
                 }
-
+            else:
+                return {
+                    "input": extract_value(row.get('input')),
+                    "output": extract_value(row.get('output')),
+                    "style": extract_value(row.get('style'))
+                }
+            
         except Exception as e:
             logger.error(f"Error getting last request: {e}")
             return None
-
-    def get_history(self, telegram_id: int, limit: int = 10) -> List[Dict[str, Any]]:
+    
+    async def get_history(self, telegram_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """Get user history."""
         try:
-            result = self.client.execute(
+            result = await self.client.execute(
                 """
                 SELECT input, output, style, created_at 
                 FROM history 
@@ -220,49 +328,65 @@ class Database:
                 """,
                 (telegram_id, limit)
             )
-
-            return [
-                {
-                    "input": row[0],
-                    "output": row[1],
-                    "style": row[2],
-                    "created_at": row[3]
-                }
-                for row in result.rows
-            ]
-
+            
+            rows = result.get('result', {}).get('rows', [])
+            
+            history = []
+            for row in rows:
+                if isinstance(row, (list, tuple)):
+                    history.append({
+                        "input": extract_value(row[0]),
+                        "output": extract_value(row[1]),
+                        "style": extract_value(row[2]),
+                        "created_at": extract_value(row[3])
+                    })
+                elif isinstance(row, dict):
+                    history.append({
+                        "input": extract_value(row.get('input')),
+                        "output": extract_value(row.get('output')),
+                        "style": extract_value(row.get('style')),
+                        "created_at": extract_value(row.get('created_at'))
+                    })
+            
+            return history
+            
         except Exception as e:
             logger.error(f"Error getting history: {e}")
             return []
-
-    def clear_history(self, telegram_id: int):
+    
+    async def clear_history(self, telegram_id: int):
         """Clear user history."""
         try:
-            with self.client.transaction() as tx:
-                tx.execute(
-                    "DELETE FROM history WHERE telegram_id = ?",
-                    (telegram_id,)
-                )
-
+            await self.client.execute(
+                "DELETE FROM history WHERE telegram_id = ?",
+                (telegram_id,)
+            )
+            
         except Exception as e:
             logger.error(f"Error clearing history: {e}")
             raise
-
-    def get_today_stats(self, telegram_id: int) -> int:
+    
+    async def get_today_stats(self, telegram_id: int) -> int:
         """Get today's request count."""
         try:
             today = datetime.now().date().isoformat()
-
-            result = self.client.execute(
+            
+            result = await self.client.execute(
                 "SELECT daily_requests FROM users WHERE telegram_id = ? AND last_request_date = ?",
                 (telegram_id, today)
             )
-
-            if not result.rows:
+            
+            rows = result.get('result', {}).get('rows', [])
+            
+            if not rows:
                 return 0
-
-            return result.rows[0][0]
-
+            
+            row = rows[0]
+            if isinstance(row, (list, tuple)):
+                return extract_value(row[0]) or 0
+            else:
+                return extract_value(row.get('daily_requests')) or 0
+            
         except Exception as e:
             logger.error(f"Error getting today stats: {e}")
             return 0
