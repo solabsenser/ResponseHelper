@@ -1,0 +1,9 @@
+aiogram==3.20.0.post0
+groq
+libsql-client
+python-dotenv
+aiohttp
+Pillow
+opencv-python-headless
+pytesseract
+faster-whisper
