@@ -8,7 +8,6 @@ import aiofiles
 import requests
 from PIL import Image, ImageEnhance
 import pytesseract
-import whisper
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -46,14 +45,6 @@ dp = Dispatcher()
 # Initialize database and AI
 db = Database(TURSO_DATABASE_URL, TURSO_AUTH_TOKEN)
 ai = AIAssistant(GROQ_API_KEY)
-
-# Initialize Whisper model
-whisper_model = None
-try:
-    whisper_model = whisper.load_model("base")
-    logger.info("Whisper model loaded successfully")
-except Exception as e:
-    logger.error(f"Failed to load Whisper model: {e}")
 
 
 # FSM States
@@ -298,7 +289,7 @@ async def handle_photo(message: Message, state: FSMContext):
 
 @dp.message(F.voice)
 async def handle_voice(message: Message, state: FSMContext):
-    """Handle voice messages."""
+    """Handle voice messages using Groq Whisper API."""
     user_id = message.from_user.id
     
     # Check daily limit
@@ -307,13 +298,6 @@ async def handle_voice(message: Message, state: FSMContext):
         await message.answer(
             "⚠️ You've reached your daily limit of 50 requests.\n"
             "Please try again tomorrow! 🌙"
-        )
-        return
-    
-    if not whisper_model:
-        await message.answer(
-            "❌ Voice transcription is not available at the moment.\n"
-            "Please try sending text instead."
         )
         return
     
@@ -329,14 +313,13 @@ async def handle_voice(message: Message, state: FSMContext):
             await bot.download_file(file_path, tmp_file.name)
             voice_path = tmp_file.name
         
-        # Transcribe using Whisper
-        result = whisper_model.transcribe(voice_path)
-        text = result["text"].strip()
+        # Transcribe using Groq Whisper
+        text = await ai.transcribe_audio(voice_path)
         
         # Clean up temp file
         os.unlink(voice_path)
         
-        if not text or len(text) < 2:
+        if not text or len(text.strip()) < 2:
             await message.answer(
                 "❌ I couldn't transcribe this voice message.\n"
                 "Please try speaking more clearly or send text instead."
@@ -366,25 +349,14 @@ async def handle_voice(message: Message, state: FSMContext):
 def ocr_image(image_path: str) -> Optional[str]:
     """Extract text from image using OCR."""
     try:
-        # Open image with PIL
         image = Image.open(image_path)
-        
-        # Preprocess for better OCR
         image = preprocess_image(image)
-        
-        # Perform OCR with multiple languages
         text = pytesseract.image_to_string(image, lang='eng+rus')
-        
-        # Clean up text
         text = text.strip()
-        
-        # If no text found, try with just English
         if not text or len(text) < 3:
             text = pytesseract.image_to_string(image, lang='eng')
             text = text.strip()
-        
         return text if text else None
-        
     except Exception as e:
         logger.error(f"OCR error: {e}")
         return None
@@ -393,24 +365,15 @@ def ocr_image(image_path: str) -> Optional[str]:
 def preprocess_image(image: Image.Image) -> Image.Image:
     """Preprocess image for better OCR using PIL only."""
     try:
-        # Convert to grayscale
         if image.mode != 'L':
             image = image.convert('L')
-        
-        # Enhance contrast
         enhancer = ImageEnhance.Contrast(image)
         image = enhancer.enhance(2.0)
-        
-        # Enhance sharpness
         enhancer = ImageEnhance.Sharpness(image)
         image = enhancer.enhance(2.0)
-        
-        # Apply threshold (binarization)
         threshold = 128
         image = image.point(lambda p: p > threshold and 255)
-        
         return image
-        
     except Exception as e:
         logger.error(f"Preprocessing error: {e}")
         return image
@@ -423,7 +386,6 @@ async def handle_style_selection(callback: CallbackQuery, state: FSMContext):
     style = callback.data.replace("style_", "")
     user_id = callback.from_user.id
     
-    # Get stored data
     data = await state.get_data()
     content_type = data.get("content_type", "text")
     content = data.get("content")
@@ -435,27 +397,18 @@ async def handle_style_selection(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     
-    # Process based on content type
     try:
         if content_type == "image" and isinstance(content, str) and content.endswith('.jpg'):
-            # Generate from image (already processed)
             replies = ai.generate("image", content, style)
         elif content_type == "text":
-            # Generate from text
             replies = ai.generate("text", content, style)
         else:
             replies = ["I couldn't generate replies for this content type."] * 3
         
-        # Increment daily requests
         await db.increment_daily_requests(user_id)
-        
-        # Save to history
         await db.save_history(user_id, str(content)[:500], "\n".join(replies), style)
-        
-        # Save last request
         await db.save_last_request(user_id, str(content)[:500], "\n".join(replies), style)
         
-        # Format response
         replies_text = format_replies(replies)
         today_stats = await db.get_today_stats(user_id)
         
@@ -468,7 +421,6 @@ async def handle_style_selection(callback: CallbackQuery, state: FSMContext):
             parse_mode="HTML"
         )
         
-        # Store for later use
         await state.update_data(
             last_style=style,
             last_replies=replies,
@@ -488,7 +440,6 @@ async def handle_style_selection(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "action_text")
 async def handle_action_text(callback: CallbackQuery, state: FSMContext):
-    """Handle text action."""
     await callback.message.edit_text(
         "📝 <b>Send me any text message</b>\n\n"
         "I'll analyze it and generate 3 natural reply options.\n\n"
@@ -501,7 +452,6 @@ async def handle_action_text(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "action_image")
 async def handle_action_image(callback: CallbackQuery, state: FSMContext):
-    """Handle image action."""
     await callback.message.edit_text(
         "📸 <b>Send me a screenshot</b>\n\n"
         "I'll extract text from it and generate reply options.\n\n"
@@ -514,7 +464,6 @@ async def handle_action_image(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "action_voice")
 async def handle_action_voice(callback: CallbackQuery, state: FSMContext):
-    """Handle voice action."""
     await callback.message.edit_text(
         "🎤 <b>Send me a voice message</b>\n\n"
         "I'll transcribe it and generate reply options.\n\n"
@@ -527,7 +476,6 @@ async def handle_action_voice(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "action_history")
 async def handle_action_history(callback: CallbackQuery):
-    """Handle history action."""
     user_id = callback.from_user.id
     history = await db.get_history(user_id)
     
@@ -565,7 +513,6 @@ async def handle_action_history(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "action_stats")
 async def handle_action_stats(callback: CallbackQuery):
-    """Handle stats action."""
     user_id = callback.from_user.id
     today_stats = await db.get_today_stats(user_id)
     history = await db.get_history(user_id)
@@ -586,10 +533,8 @@ async def handle_action_stats(callback: CallbackQuery):
 
 @dp.callback_query(F.data == "action_clear")
 async def handle_action_clear(callback: CallbackQuery, state: FSMContext):
-    """Handle clear action."""
     user_id = callback.from_user.id
     await db.clear_history(user_id)
-    
     await state.clear()
     
     await callback.message.edit_text(
@@ -605,10 +550,8 @@ async def handle_action_clear(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "action_more")
 async def handle_action_more(callback: CallbackQuery, state: FSMContext):
-    """Handle more action - generate new replies."""
     user_id = callback.from_user.id
     
-    # Check daily limit
     can_proceed, count = await db.check_daily_limit(user_id)
     if not can_proceed:
         await callback.message.edit_text(
@@ -629,22 +572,12 @@ async def handle_action_more(callback: CallbackQuery, state: FSMContext):
         await callback.answer()
         return
     
-    # Generate new replies with same style
     replies = ai.generate("text", content, style)
-    
-    # Increment daily requests
     await db.increment_daily_requests(user_id)
-    
-    # Save to history
     await db.save_history(user_id, str(content)[:500], "\n".join(replies), style)
-    
-    # Save last request
     await db.save_last_request(user_id, str(content)[:500], "\n".join(replies), style)
-    
-    # Update state
     await state.update_data(last_replies=replies)
     
-    # Format response
     replies_text = format_replies(replies)
     today_stats = await db.get_today_stats(user_id)
     
@@ -661,7 +594,6 @@ async def handle_action_more(callback: CallbackQuery, state: FSMContext):
 
 @dp.callback_query(F.data == "action_change_style")
 async def handle_action_change_style(callback: CallbackQuery, state: FSMContext):
-    """Handle change style action."""
     data = await state.get_data()
     content = data.get("content")
     
@@ -672,7 +604,6 @@ async def handle_action_change_style(callback: CallbackQuery, state: FSMContext)
         await callback.answer()
         return
     
-    # Store content and set state
     await state.update_data(content_type="text", content=content)
     await state.set_state(ReplyStates.waiting_for_style_after_text)
     
@@ -687,7 +618,6 @@ async def handle_action_change_style(callback: CallbackQuery, state: FSMContext)
 
 @dp.callback_query(F.data == "action_main")
 async def handle_action_main(callback: CallbackQuery):
-    """Handle main menu action."""
     await callback.message.edit_text(
         "🏠 <b>Main Menu</b>\n\n"
         "What would you like to do?",
@@ -697,26 +627,18 @@ async def handle_action_main(callback: CallbackQuery):
     await callback.answer()
 
 
-# Error handlers
 @dp.errors()
 async def error_handler(update, exception):
-    """Handle errors gracefully."""
     logger.error(f"Update: {update}, Exception: {exception}")
-    
     if isinstance(update, types.Message):
-        await update.answer(
-            "❌ An error occurred. Please try again later."
-        )
+        await update.answer("❌ An error occurred. Please try again later.")
     return True
 
 
 async def main():
-    """Main entry point."""
     try:
-        # Initialize database tables
         await db._ensure_initialized()
         logger.info("✅ Database initialized")
-        
         logger.info("🚀 Starting ReplyGo bot...")
         await dp.start_polling(bot)
     except Exception as e:
