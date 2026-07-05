@@ -6,9 +6,8 @@ from datetime import datetime
 from typing import Optional
 import aiofiles
 import requests
-from PIL import Image, ImageEnhance, ImageFilter
+from PIL import Image, ImageEnhance
 import pytesseract
-import magic
 import whisper
 
 from aiogram import Bot, Dispatcher, types, F
