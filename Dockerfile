@@ -2,7 +2,7 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install minimal system dependencies
+# Install system dependencies (minimal)
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-eng \
@@ -10,10 +10,7 @@ RUN apt-get update && apt-get install -y \
     libtesseract-dev \
     libleptonica-dev \
     ffmpeg \
-    libsm6 \
-    libxext6 \
-    libxrender-dev \
-    libglib2.0-0 \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
