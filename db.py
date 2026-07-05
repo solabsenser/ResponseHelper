@@ -73,74 +73,56 @@ def extract_value(data):
     return data
 
 
-def ensure_list(data):
-    """Ensure data is a list"""
-    if data is None:
-        return []
-    if isinstance(data, list):
-        return data
-    if isinstance(data, str):
-        try:
-            parsed = json.loads(data)
-            if isinstance(parsed, list):
-                return parsed
-            return [parsed] if parsed else []
-        except:
-            return []
-    if isinstance(data, dict):
-        return [data] if data else []
-    return [data] if data else []
-
-
 class Database:
     def __init__(self, url: str, token: str):
         self.client = TursoClient(url, token)
-        self._init_tables()
+        self._initialized = False
     
-    def _init_tables(self):
+    async def _ensure_initialized(self):
+        """Ensure database tables are initialized"""
+        if not self._initialized:
+            await self._init_tables()
+            self._initialized = True
+    
+    async def _init_tables(self):
         """Initialize database tables if they don't exist."""
         try:
-            import asyncio
+            # Users table
+            await self.client.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    telegram_id INTEGER PRIMARY KEY,
+                    username TEXT,
+                    first_name TEXT,
+                    daily_requests INTEGER DEFAULT 0,
+                    last_request_date TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             
-            async def init():
-                # Users table
-                await self.client.execute("""
-                    CREATE TABLE IF NOT EXISTS users (
-                        telegram_id INTEGER PRIMARY KEY,
-                        username TEXT,
-                        first_name TEXT,
-                        daily_requests INTEGER DEFAULT 0,
-                        last_request_date TEXT,
-                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                
-                # History table
-                await self.client.execute("""
-                    CREATE TABLE IF NOT EXISTS history (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        telegram_id INTEGER,
-                        input TEXT,
-                        output TEXT,
-                        style TEXT,
-                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                
-                # Last requests table
-                await self.client.execute("""
-                    CREATE TABLE IF NOT EXISTS last_request (
-                        telegram_id INTEGER PRIMARY KEY,
-                        input TEXT,
-                        output TEXT,
-                        style TEXT,
-                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-                    )
-                """)
-                
-                logger.info("✅ Database tables initialized successfully")
+            # History table
+            await self.client.execute("""
+                CREATE TABLE IF NOT EXISTS history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    telegram_id INTEGER,
+                    input TEXT,
+                    output TEXT,
+                    style TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             
-            asyncio.run(init())
+            # Last requests table
+            await self.client.execute("""
+                CREATE TABLE IF NOT EXISTS last_request (
+                    telegram_id INTEGER PRIMARY KEY,
+                    input TEXT,
+                    output TEXT,
+                    style TEXT,
+                    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            
+            logger.info("✅ Database tables initialized successfully")
             
         except Exception as e:
             logger.error(f"Error initializing database: {e}")
@@ -148,6 +130,8 @@ class Database:
     
     async def get_or_create_user(self, telegram_id: int, username: Optional[str] = None, first_name: Optional[str] = None):
         """Get user or create if doesn't exist."""
+        await self._ensure_initialized()
+        
         try:
             # Check if user exists
             result = await self.client.execute(
@@ -200,6 +184,8 @@ class Database:
     
     async def check_daily_limit(self, telegram_id: int) -> tuple[bool, int]:
         """Check if user has reached daily limit. Returns (can_proceed, current_requests)."""
+        await self._ensure_initialized()
+        
         try:
             today = datetime.now().date().isoformat()
             
@@ -237,6 +223,8 @@ class Database:
     
     async def increment_daily_requests(self, telegram_id: int):
         """Increment daily request count."""
+        await self._ensure_initialized()
+        
         try:
             today = datetime.now().date().isoformat()
             
@@ -256,6 +244,8 @@ class Database:
     
     async def save_history(self, telegram_id: int, input_text: str, output: str, style: str):
         """Save to history."""
+        await self._ensure_initialized()
+        
         try:
             await self.client.execute(
                 """
@@ -271,6 +261,8 @@ class Database:
     
     async def save_last_request(self, telegram_id: int, input_text: str, output: str, style: str):
         """Save or update last request."""
+        await self._ensure_initialized()
+        
         try:
             await self.client.execute(
                 """
@@ -286,6 +278,8 @@ class Database:
     
     async def get_last_request(self, telegram_id: int) -> Optional[Dict[str, Any]]:
         """Get last request for user."""
+        await self._ensure_initialized()
+        
         try:
             result = await self.client.execute(
                 "SELECT input, output, style FROM last_request WHERE telegram_id = ?",
@@ -317,6 +311,8 @@ class Database:
     
     async def get_history(self, telegram_id: int, limit: int = 10) -> List[Dict[str, Any]]:
         """Get user history."""
+        await self._ensure_initialized()
+        
         try:
             result = await self.client.execute(
                 """
@@ -356,6 +352,8 @@ class Database:
     
     async def clear_history(self, telegram_id: int):
         """Clear user history."""
+        await self._ensure_initialized()
+        
         try:
             await self.client.execute(
                 "DELETE FROM history WHERE telegram_id = ?",
@@ -368,6 +366,8 @@ class Database:
     
     async def get_today_stats(self, telegram_id: int) -> int:
         """Get today's request count."""
+        await self._ensure_initialized()
+        
         try:
             today = datetime.now().date().isoformat()
             
