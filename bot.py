@@ -6,8 +6,7 @@ from datetime import datetime
 from typing import Optional
 import aiofiles
 import requests
-from PIL import Image
-import cv2
+from PIL import Image, ImageEnhance, ImageFilter
 import pytesseract
 import magic
 from faster_whisper import WhisperModel
@@ -374,10 +373,18 @@ def ocr_image(image_path: str) -> Optional[str]:
         # Preprocess for better OCR
         image = preprocess_image(image)
         
-        # Perform OCR
+        # Perform OCR with multiple languages
         text = pytesseract.image_to_string(image, lang='eng+rus')
         
-        return text.strip() if text else None
+        # Clean up text
+        text = text.strip()
+        
+        # If no text found, try with just English
+        if not text or len(text) < 3:
+            text = pytesseract.image_to_string(image, lang='eng')
+            text = text.strip()
+        
+        return text if text else None
         
     except Exception as e:
         logger.error(f"OCR error: {e}")
@@ -385,20 +392,26 @@ def ocr_image(image_path: str) -> Optional[str]:
 
 
 def preprocess_image(image: Image.Image) -> Image.Image:
-    """Preprocess image for better OCR."""
+    """Preprocess image for better OCR using PIL only."""
     try:
         # Convert to grayscale
-        gray = image.convert('L')
+        if image.mode != 'L':
+            image = image.convert('L')
         
-        # Convert to numpy array for OpenCV
-        import numpy as np
-        img_array = np.array(gray)
+        # Enhance contrast
+        enhancer = ImageEnhance.Contrast(image)
+        image = enhancer.enhance(2.0)
         
-        # Apply threshold
-        _, thresh = cv2.threshold(img_array, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        # Enhance sharpness
+        enhancer = ImageEnhance.Sharpness(image)
+        image = enhancer.enhance(2.0)
         
-        # Convert back to PIL
-        return Image.fromarray(thresh)
+        # Apply threshold (binarization)
+        # Using a simple threshold
+        threshold = 128
+        image = image.point(lambda p: p > threshold and 255)
+        
+        return image
         
     except Exception as e:
         logger.error(f"Preprocessing error: {e}")
@@ -703,7 +716,7 @@ async def main():
     """Main entry point."""
     try:
         # Initialize database tables
-        await db._init_tables()
+        await db._ensure_initialized()
         logger.info("✅ Database initialized")
         
         logger.info("🚀 Starting ReplyGo bot...")
