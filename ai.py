@@ -160,7 +160,7 @@ Generate only the replies, no additional text or explanations."""
         """Transcribe audio using Groq Whisper."""
         try:
             with open(audio_path, "rb") as audio_file:
-                # Создаем файл для загрузки
+                # Для groq 1.5.0 используем File из types
                 from groq.types import File
                 audio_file_obj = File(file=audio_file, filename="audio.ogg")
                 
