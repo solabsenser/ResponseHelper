@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Optional, List, Dict, Any
 import libsql_client
 
@@ -8,7 +8,10 @@ logger = logging.getLogger(__name__)
 
 class Database:
     def __init__(self, url: str, token: str):
-        self.client = libsql_client.Client(url, auth_token=token)
+        self.client = libsql_client.create_client_sync(
+            url=url,
+            auth_token=token
+        )
         self._init_tables()
 
     def _init_tables(self):
@@ -22,8 +25,8 @@ class Database:
                         username TEXT,
                         first_name TEXT,
                         daily_requests INTEGER DEFAULT 0,
-                        last_request_date DATE,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        last_request_date TEXT,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP
                     )
                 """)
 
@@ -35,7 +38,7 @@ class Database:
                         input TEXT,
                         output TEXT,
                         style TEXT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
                     )
                 """)
@@ -47,7 +50,7 @@ class Database:
                         input TEXT,
                         output TEXT,
                         style TEXT,
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                         FOREIGN KEY (telegram_id) REFERENCES users(telegram_id)
                     )
                 """)
