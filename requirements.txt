@@ -3,11 +3,10 @@ groq==0.7.0
 python-dotenv==1.0.0
 Pillow==10.1.0
 pytesseract==0.3.10
-openai-whisper==20231117
 requests==2.31.0
 python-magic==0.4.27
 aiofiles==23.2.1
 aiohttp==3.9.1
 numpy==1.24.3
-torch==2.1.0
-torchvision==0.16.0
+setuptools>=68.0.0
+wheel>=0.41.0
