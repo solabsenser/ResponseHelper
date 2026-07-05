@@ -2,13 +2,14 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Install system dependencies
+# Install system dependencies including libmagic
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     tesseract-ocr-eng \
     tesseract-ocr-rus \
     libtesseract-dev \
     libleptonica-dev \
+    libmagic-dev \
     ffmpeg \
     wget \
     && rm -rf /var/lib/apt/lists/*
