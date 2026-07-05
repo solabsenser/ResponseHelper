@@ -9,7 +9,7 @@ import requests
 from PIL import Image, ImageEnhance, ImageFilter
 import pytesseract
 import magic
-from faster_whisper import WhisperModel
+import whisper
 
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
@@ -51,7 +51,7 @@ ai = AIAssistant(GROQ_API_KEY)
 # Initialize Whisper model
 whisper_model = None
 try:
-    whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
+    whisper_model = whisper.load_model("base")
     logger.info("Whisper model loaded successfully")
 except Exception as e:
     logger.error(f"Failed to load Whisper model: {e}")
@@ -331,13 +331,13 @@ async def handle_voice(message: Message, state: FSMContext):
             voice_path = tmp_file.name
         
         # Transcribe using Whisper
-        segments, info = whisper_model.transcribe(voice_path, beam_size=5)
-        text = " ".join([segment.text for segment in segments])
+        result = whisper_model.transcribe(voice_path)
+        text = result["text"].strip()
         
         # Clean up temp file
         os.unlink(voice_path)
         
-        if not text or len(text.strip()) < 2:
+        if not text or len(text) < 2:
             await message.answer(
                 "❌ I couldn't transcribe this voice message.\n"
                 "Please try speaking more clearly or send text instead."
@@ -407,7 +407,6 @@ def preprocess_image(image: Image.Image) -> Image.Image:
         image = enhancer.enhance(2.0)
         
         # Apply threshold (binarization)
-        # Using a simple threshold
         threshold = 128
         image = image.point(lambda p: p > threshold and 255)
         
