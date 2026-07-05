@@ -3,18 +3,7 @@ import logging
 import os
 import tempfile
 from datetime import datetime
-from typing import Optional, Dict, Any
-from pathlib import Path
-
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.filters import Command, StateFilter
-from aiogram.fsm.context import FSMContext
-from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import (
-    Message, CallbackQuery, InlineKeyboardMarkup, 
-    InlineKeyboardButton, FSInputFile, BufferedInputFile
-)
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from typing import Optional
 import aiofiles
 import requests
 from PIL import Image
@@ -23,8 +12,22 @@ import pytesseract
 import magic
 from faster_whisper import WhisperModel
 
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import Command
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import (
+    Message, CallbackQuery, InlineKeyboardMarkup, 
+    InlineKeyboardButton
+)
+from aiogram.utils.keyboard import InlineKeyboardBuilder
+from dotenv import load_dotenv
+
 from db import Database
 from ai import AIAssistant
+
+# Load environment variables
+load_dotenv()
 
 # Configure logging
 logging.basicConfig(
@@ -33,7 +36,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize bot and dispatcher
+# Initialize bot
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL")
@@ -125,7 +128,7 @@ async def user_middleware(message: Message, handler):
     try:
         user = message.from_user
         if user:
-            db.get_or_create_user(
+            await db.get_or_create_user(
                 user.id,
                 user.username,
                 user.first_name
@@ -141,7 +144,7 @@ async def callback_user_middleware(callback: CallbackQuery, handler):
     try:
         user = callback.from_user
         if user:
-            db.get_or_create_user(
+            await db.get_or_create_user(
                 user.id,
                 user.username,
                 user.first_name
@@ -174,32 +177,6 @@ async def cmd_start(message: Message):
     await message.answer(welcome_text, reply_markup=keyboard, parse_mode="HTML")
 
 
-@dp.message(Command("help"))
-async def cmd_help(message: Message):
-    """Handle /help command."""
-    help_text = (
-        "❓ <b>How to use ReplyGo</b>\n\n"
-        "<b>Send me:</b>\n"
-        "• 📝 Any text message\n"
-        "• 📸 A screenshot (with text)\n"
-        "• 🎤 A voice message\n\n"
-        "<b>Choose a style:</b>\n"
-        "• Calm, Confident, Funny, Hard\n"
-        "• Friendly, Business, Smart\n"
-        "• End conflict, Sarcastic, Short\n"
-        "• Improve my reply\n\n"
-        "<b>After getting replies:</b>\n"
-        "• 🔄 Get more options\n"
-        "• 🎨 Change style\n"
-        "• 🗑 Clear and start over\n\n"
-        "<b>Limits:</b>\n"
-        "• 50 requests per day\n"
-        "• History saved for reference\n\n"
-        "Ready to reply? Just send me something! 📱"
-    )
-    await message.answer(help_text, parse_mode="HTML")
-
-
 # Message handlers
 @dp.message(F.text & ~F.text.startswith('/'))
 async def handle_text(message: Message, state: FSMContext):
@@ -207,7 +184,7 @@ async def handle_text(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
     # Check daily limit
-    can_proceed, count = db.check_daily_limit(user_id)
+    can_proceed, count = await db.check_daily_limit(user_id)
     if not can_proceed:
         await message.answer(
             "⚠️ You've reached your daily limit of 50 requests.\n"
@@ -220,7 +197,7 @@ async def handle_text(message: Message, state: FSMContext):
     await state.set_state(ReplyStates.waiting_for_style_after_text)
     
     await message.answer(
-        "📝 <b>Great! Now choose a reply style:</b>\n\n"
+        f"📝 <b>Great! Now choose a reply style:</b>\n\n"
         f"Message: \"{message.text[:50]}{'...' if len(message.text) > 50 else ''}\"",
         reply_markup=get_style_keyboard(),
         parse_mode="HTML"
@@ -233,7 +210,7 @@ async def handle_photo(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
     # Check daily limit
-    can_proceed, count = db.check_daily_limit(user_id)
+    can_proceed, count = await db.check_daily_limit(user_id)
     if not can_proceed:
         await message.answer(
             "⚠️ You've reached your daily limit of 50 requests.\n"
@@ -327,7 +304,7 @@ async def handle_voice(message: Message, state: FSMContext):
     user_id = message.from_user.id
     
     # Check daily limit
-    can_proceed, count = db.check_daily_limit(user_id)
+    can_proceed, count = await db.check_daily_limit(user_id)
     if not can_proceed:
         await message.answer(
             "⚠️ You've reached your daily limit of 50 requests.\n"
@@ -459,21 +436,22 @@ async def handle_style_selection(callback: CallbackQuery, state: FSMContext):
             replies = ["I couldn't generate replies for this content type."] * 3
         
         # Increment daily requests
-        db.increment_daily_requests(user_id)
+        await db.increment_daily_requests(user_id)
         
         # Save to history
-        db.save_history(user_id, str(content)[:500], "\n".join(replies), style)
+        await db.save_history(user_id, str(content)[:500], "\n".join(replies), style)
         
         # Save last request
-        db.save_last_request(user_id, str(content)[:500], "\n".join(replies), style)
+        await db.save_last_request(user_id, str(content)[:500], "\n".join(replies), style)
         
         # Format response
         replies_text = format_replies(replies)
+        today_stats = await db.get_today_stats(user_id)
         
         await callback.message.edit_text(
             f"🎯 <b>Here are your reply options</b> [{style} style]\n\n"
             f"{replies_text}\n\n"
-            f"📊 Today's usage: {db.get_today_stats(user_id)}/50\n\n"
+            f"📊 Today's usage: {today_stats}/50\n\n"
             "What would you like to do next?",
             reply_markup=get_reply_keyboard(),
             parse_mode="HTML"
@@ -540,7 +518,7 @@ async def handle_action_voice(callback: CallbackQuery, state: FSMContext):
 async def handle_action_history(callback: CallbackQuery):
     """Handle history action."""
     user_id = callback.from_user.id
-    history = db.get_history(user_id)
+    history = await db.get_history(user_id)
     
     if not history:
         await callback.message.edit_text(
@@ -578,8 +556,9 @@ async def handle_action_history(callback: CallbackQuery):
 async def handle_action_stats(callback: CallbackQuery):
     """Handle stats action."""
     user_id = callback.from_user.id
-    today_stats = db.get_today_stats(user_id)
-    history_count = len(db.get_history(user_id))
+    today_stats = await db.get_today_stats(user_id)
+    history = await db.get_history(user_id)
+    history_count = len(history)
     
     await callback.message.edit_text(
         f"📈 <b>Your Stats</b>\n\n"
@@ -598,7 +577,7 @@ async def handle_action_stats(callback: CallbackQuery):
 async def handle_action_clear(callback: CallbackQuery, state: FSMContext):
     """Handle clear action."""
     user_id = callback.from_user.id
-    db.clear_history(user_id)
+    await db.clear_history(user_id)
     
     await state.clear()
     
@@ -619,7 +598,7 @@ async def handle_action_more(callback: CallbackQuery, state: FSMContext):
     user_id = callback.from_user.id
     
     # Check daily limit
-    can_proceed, count = db.check_daily_limit(user_id)
+    can_proceed, count = await db.check_daily_limit(user_id)
     if not can_proceed:
         await callback.message.edit_text(
             "⚠️ You've reached your daily limit of 50 requests.\n"
@@ -643,24 +622,25 @@ async def handle_action_more(callback: CallbackQuery, state: FSMContext):
     replies = ai.generate("text", content, style)
     
     # Increment daily requests
-    db.increment_daily_requests(user_id)
+    await db.increment_daily_requests(user_id)
     
     # Save to history
-    db.save_history(user_id, str(content)[:500], "\n".join(replies), style)
+    await db.save_history(user_id, str(content)[:500], "\n".join(replies), style)
     
     # Save last request
-    db.save_last_request(user_id, str(content)[:500], "\n".join(replies), style)
+    await db.save_last_request(user_id, str(content)[:500], "\n".join(replies), style)
     
     # Update state
     await state.update_data(last_replies=replies)
     
     # Format response
     replies_text = format_replies(replies)
+    today_stats = await db.get_today_stats(user_id)
     
     await callback.message.edit_text(
         f"🔄 <b>New reply options</b> [{style} style]\n\n"
         f"{replies_text}\n\n"
-        f"📊 Today's usage: {db.get_today_stats(user_id)}/50\n\n"
+        f"📊 Today's usage: {today_stats}/50\n\n"
         "What would you like to do next?",
         reply_markup=get_reply_keyboard(),
         parse_mode="HTML"
@@ -722,7 +702,11 @@ async def error_handler(update, exception):
 async def main():
     """Main entry point."""
     try:
-        logger.info("Starting ReplyGo bot...")
+        # Initialize database tables
+        await db._init_tables()
+        logger.info("✅ Database initialized")
+        
+        logger.info("🚀 Starting ReplyGo bot...")
         await dp.start_polling(bot)
     except Exception as e:
         logger.error(f"Error starting bot: {e}")
