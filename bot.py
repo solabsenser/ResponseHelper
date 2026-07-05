@@ -19,6 +19,7 @@ from aiogram.types import (
 )
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from dotenv import load_dotenv
+from aiohttp import web
 
 from db import Database
 from ai import AIAssistant
@@ -38,6 +39,7 @@ BOT_TOKEN = os.getenv("BOT_TOKEN")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 TURSO_DATABASE_URL = os.getenv("TURSO_DATABASE_URL")
 TURSO_AUTH_TOKEN = os.getenv("TURSO_AUTH_TOKEN")
+PORT = int(os.getenv("PORT", 10000))
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher()
@@ -110,13 +112,14 @@ def format_replies(replies: list) -> str:
     return "\n\n".join([f"{i+1}. {reply}" for i, reply in enumerate(replies)])
 
 
-# Middleware to track user
+# Middleware to track user - исправленная версия для aiogram 3.x
 @dp.message.middleware()
-async def user_middleware(message: Message, handler):
+async def user_middleware(handler, event, data):
     """Track user and ensure they exist in database."""
     try:
-        user = message.from_user
-        if user:
+        message = event
+        if message and hasattr(message, 'from_user') and message.from_user:
+            user = message.from_user
             await db.get_or_create_user(
                 user.id,
                 user.username,
@@ -124,15 +127,16 @@ async def user_middleware(message: Message, handler):
             )
     except Exception as e:
         logger.error(f"User middleware error: {e}")
-    return await handler(message, {})
+    return await handler(event, data)
 
 
 @dp.callback_query.middleware()
-async def callback_user_middleware(callback: CallbackQuery, handler):
+async def callback_user_middleware(handler, event, data):
     """Track user from callbacks."""
     try:
-        user = callback.from_user
-        if user:
+        callback = event
+        if callback and hasattr(callback, 'from_user') and callback.from_user:
+            user = callback.from_user
             await db.get_or_create_user(
                 user.id,
                 user.username,
@@ -140,7 +144,7 @@ async def callback_user_middleware(callback: CallbackQuery, handler):
             )
     except Exception as e:
         logger.error(f"Callback user middleware error: {e}")
-    return await handler(callback, {})
+    return await handler(event, data)
 
 
 # Command handlers
@@ -627,18 +631,54 @@ async def handle_action_main(callback: CallbackQuery):
     await callback.answer()
 
 
+# Error handler - исправленная версия
 @dp.errors()
-async def error_handler(update, exception):
-    logger.error(f"Update: {update}, Exception: {exception}")
-    if isinstance(update, types.Message):
-        await update.answer("❌ An error occurred. Please try again later.")
+async def error_handler(event, exception):
+    """Handle errors gracefully."""
+    logger.error(f"Event: {event}, Exception: {exception}")
+    
+    # Try to notify user if possible
+    try:
+        if hasattr(event, 'message') and event.message:
+            await event.message.answer("❌ An error occurred. Please try again later.")
+        elif hasattr(event, 'callback_query') and event.callback_query:
+            await event.callback_query.message.answer("❌ An error occurred. Please try again later.")
+    except:
+        pass
+    
     return True
 
 
+# Web server for health check
+async def health_check(request):
+    """Health check endpoint for Render."""
+    return web.Response(text="OK", status=200)
+
+
+async def start_web():
+    """Start web server for health checks."""
+    app = web.Application()
+    app.router.add_get('/', health_check)
+    app.router.add_get('/health', health_check)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', PORT)
+    await site.start()
+    logger.info(f"✅ Web server started on port {PORT}")
+    return app
+
+
 async def main():
+    """Main entry point."""
     try:
+        # Initialize database tables
         await db._ensure_initialized()
         logger.info("✅ Database initialized")
+        
+        # Start web server for health checks
+        await start_web()
+        
+        # Start bot
         logger.info("🚀 Starting ReplyGo bot...")
         await dp.start_polling(bot)
     except Exception as e:
