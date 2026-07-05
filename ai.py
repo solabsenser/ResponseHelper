@@ -70,8 +70,6 @@ Generate only the replies, no additional text or explanations."""
                 reply = line.split('.', 1)[1].strip() if '.' in line else line
                 if reply:
                     replies.append(reply)
-            elif line and not line.startswith(('1.', '2.', '3.')):
-                pass
 
         if len(replies) < 3:
             for line in lines:
@@ -160,12 +158,9 @@ Generate only the replies, no additional text or explanations."""
         """Transcribe audio using Groq Whisper."""
         try:
             with open(audio_path, "rb") as audio_file:
-                # Для groq 1.5.0 используем File из types
-                from groq.types import File
-                audio_file_obj = File(file=audio_file, filename="audio.ogg")
-                
+                # Для groq 0.7.0 используем обычный файл
                 transcription = self.client.audio.transcriptions.create(
-                    file=audio_file_obj,
+                    file=audio_file,
                     model=self.audio_model,
                     response_format="text"
                 )
