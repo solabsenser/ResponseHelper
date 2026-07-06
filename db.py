@@ -29,9 +29,9 @@ class TursoClient:
             elif isinstance(p, bool):
                 formatted.append({"type": "integer", "value": 1 if p else 0})
             elif isinstance(p, int):
-                formatted.append({"type": "integer", "value": p})
+                formatted.append({"type": "text", "value": str(p)})  # Все числа как текст
             elif isinstance(p, float):
-                formatted.append({"type": "real", "value": p})
+                formatted.append({"type": "text", "value": str(p)})
             elif isinstance(p, (list, dict)):
                 formatted.append({"type": "text", "value": json.dumps(p, ensure_ascii=False)})
             else:
@@ -81,9 +81,10 @@ class Database:
     
     async def _init_tables(self):
         try:
+            # Users table - используем TEXT для telegram_id
             await self.client.execute("""
                 CREATE TABLE IF NOT EXISTS users (
-                    telegram_id INTEGER PRIMARY KEY,
+                    telegram_id TEXT PRIMARY KEY,
                     username TEXT,
                     first_name TEXT,
                     daily_requests INTEGER DEFAULT 0,
@@ -92,10 +93,11 @@ class Database:
                 )
             """)
             
+            # History table
             await self.client.execute("""
                 CREATE TABLE IF NOT EXISTS history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    telegram_id INTEGER,
+                    telegram_id TEXT,
                     input TEXT,
                     output TEXT,
                     style TEXT,
@@ -103,9 +105,10 @@ class Database:
                 )
             """)
             
+            # Last requests table
             await self.client.execute("""
                 CREATE TABLE IF NOT EXISTS last_request (
-                    telegram_id INTEGER PRIMARY KEY,
+                    telegram_id TEXT PRIMARY KEY,
                     input TEXT,
                     output TEXT,
                     style TEXT,
@@ -123,9 +126,11 @@ class Database:
         await self._ensure_initialized()
         
         try:
+            user_id = str(telegram_id)  # Преобразуем в строку
+            
             result = await self.client.execute(
                 "SELECT * FROM users WHERE telegram_id = ?",
-                (telegram_id,)
+                (user_id,)
             )
             
             rows = result.get('result', {}).get('rows', [])
@@ -136,10 +141,10 @@ class Database:
                     INSERT INTO users (telegram_id, username, first_name, daily_requests, last_request_date)
                     VALUES (?, ?, ?, 0, ?)
                     """,
-                    (telegram_id, username, first_name, None)
+                    (user_id, username, first_name, None)
                 )
                 return {
-                    "telegram_id": telegram_id,
+                    "telegram_id": user_id,
                     "username": username,
                     "first_name": first_name,
                     "daily_requests": 0,
@@ -175,17 +180,17 @@ class Database:
         await self._ensure_initialized()
         
         try:
+            user_id = str(telegram_id)
             today = date.today().isoformat()
             
             result = await self.client.execute(
                 "SELECT daily_requests, last_request_date FROM users WHERE telegram_id = ?",
-                (telegram_id,)
+                (user_id,)
             )
             
             rows = result.get('result', {}).get('rows', [])
             
             if not rows:
-                # Пользователь не найден - создаем нового
                 await self.get_or_create_user(telegram_id)
                 return True, 0
             
@@ -197,13 +202,12 @@ class Database:
                 daily_requests = extract_value(row.get('daily_requests')) or 0
                 last_request_date = extract_value(row.get('last_request_date'))
             
-            logger.info(f"User {telegram_id}: daily_requests={daily_requests}, last_request_date={last_request_date}, today={today}")
+            logger.info(f"User {user_id}: daily_requests={daily_requests}, last_request_date={last_request_date}, today={today}")
             
-            # Если last_request_date None или отличается от сегодня - сбрасываем
             if last_request_date is None or last_request_date != today:
                 await self.client.execute(
                     "UPDATE users SET daily_requests = 0, last_request_date = ? WHERE telegram_id = ?",
-                    (today, telegram_id)
+                    (today, user_id)
                 )
                 return True, 0
             
@@ -212,12 +216,13 @@ class Database:
             
         except Exception as e:
             logger.error(f"Error checking daily limit: {e}")
-            return True, 0  # В случае ошибки разрешаем запрос
+            return True, 0
     
     async def increment_daily_requests(self, telegram_id: int):
         await self._ensure_initialized()
         
         try:
+            user_id = str(telegram_id)
             today = date.today().isoformat()
             
             await self.client.execute(
@@ -227,7 +232,7 @@ class Database:
                     last_request_date = ?
                 WHERE telegram_id = ?
                 """,
-                (today, telegram_id)
+                (today, user_id)
             )
             
         except Exception as e:
@@ -238,12 +243,14 @@ class Database:
         await self._ensure_initialized()
         
         try:
+            user_id = str(telegram_id)
+            
             await self.client.execute(
                 """
                 INSERT INTO history (telegram_id, input, output, style)
                 VALUES (?, ?, ?, ?)
                 """,
-                (telegram_id, input_text, output, style)
+                (user_id, input_text, output, style)
             )
             
         except Exception as e:
@@ -254,12 +261,14 @@ class Database:
         await self._ensure_initialized()
         
         try:
+            user_id = str(telegram_id)
+            
             await self.client.execute(
                 """
                 INSERT OR REPLACE INTO last_request (telegram_id, input, output, style, created_at)
                 VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
                 """,
-                (telegram_id, input_text, output, style)
+                (user_id, input_text, output, style)
             )
             
         except Exception as e:
@@ -270,9 +279,11 @@ class Database:
         await self._ensure_initialized()
         
         try:
+            user_id = str(telegram_id)
+            
             result = await self.client.execute(
                 "SELECT input, output, style FROM last_request WHERE telegram_id = ?",
-                (telegram_id,)
+                (user_id,)
             )
             
             rows = result.get('result', {}).get('rows', [])
@@ -302,6 +313,8 @@ class Database:
         await self._ensure_initialized()
         
         try:
+            user_id = str(telegram_id)
+            
             result = await self.client.execute(
                 """
                 SELECT input, output, style, created_at 
@@ -310,7 +323,7 @@ class Database:
                 ORDER BY created_at DESC 
                 LIMIT ?
                 """,
-                (telegram_id, limit)
+                (user_id, limit)
             )
             
             rows = result.get('result', {}).get('rows', [])
@@ -342,9 +355,11 @@ class Database:
         await self._ensure_initialized()
         
         try:
+            user_id = str(telegram_id)
+            
             await self.client.execute(
                 "DELETE FROM history WHERE telegram_id = ?",
-                (telegram_id,)
+                (user_id,)
             )
             
         except Exception as e:
@@ -355,11 +370,12 @@ class Database:
         await self._ensure_initialized()
         
         try:
+            user_id = str(telegram_id)
             today = date.today().isoformat()
             
             result = await self.client.execute(
                 "SELECT daily_requests FROM users WHERE telegram_id = ? AND last_request_date = ?",
-                (telegram_id, today)
+                (user_id, today)
             )
             
             rows = result.get('result', {}).get('rows', [])
