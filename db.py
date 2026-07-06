@@ -29,7 +29,7 @@ class TursoClient:
             elif isinstance(p, bool):
                 formatted.append({"type": "integer", "value": 1 if p else 0})
             elif isinstance(p, int):
-                formatted.append({"type": "text", "value": str(p)})  # Все числа как текст
+                formatted.append({"type": "text", "value": str(p)})
             elif isinstance(p, float):
                 formatted.append({"type": "text", "value": str(p)})
             elif isinstance(p, (list, dict)):
@@ -126,7 +126,7 @@ class Database:
         await self._ensure_initialized()
         
         try:
-            user_id = str(telegram_id)  # Преобразуем в строку
+            user_id = str(telegram_id)
             
             result = await self.client.execute(
                 "SELECT * FROM users WHERE telegram_id = ?",
@@ -157,7 +157,7 @@ class Database:
                     "telegram_id": extract_value(row[0]),
                     "username": extract_value(row[1]),
                     "first_name": extract_value(row[2]),
-                    "daily_requests": extract_value(row[3]) or 0,
+                    "daily_requests": int(extract_value(row[3]) or 0),
                     "last_request_date": extract_value(row[4])
                 }
             elif isinstance(row, dict):
@@ -165,7 +165,7 @@ class Database:
                     "telegram_id": extract_value(row.get('telegram_id')),
                     "username": extract_value(row.get('username')),
                     "first_name": extract_value(row.get('first_name')),
-                    "daily_requests": extract_value(row.get('daily_requests')) or 0,
+                    "daily_requests": int(extract_value(row.get('daily_requests')) or 0),
                     "last_request_date": extract_value(row.get('last_request_date'))
                 }
             
@@ -181,7 +181,7 @@ class Database:
         
         try:
             user_id = str(telegram_id)
-            today = date.today().isoformat()
+            today = str(date.today().isoformat())  # Явно как строка
             
             result = await self.client.execute(
                 "SELECT daily_requests, last_request_date FROM users WHERE telegram_id = ?",
@@ -196,15 +196,16 @@ class Database:
             
             row = rows[0]
             if isinstance(row, (list, tuple)):
-                daily_requests = extract_value(row[0]) or 0
-                last_request_date = extract_value(row[1])
+                daily_requests = int(extract_value(row[0]) or 0)
+                last_request_date = str(extract_value(row[1]) or '')
             else:
-                daily_requests = extract_value(row.get('daily_requests')) or 0
-                last_request_date = extract_value(row.get('last_request_date'))
+                daily_requests = int(extract_value(row.get('daily_requests')) or 0)
+                last_request_date = str(extract_value(row.get('last_request_date')) or '')
             
             logger.info(f"User {user_id}: daily_requests={daily_requests}, last_request_date={last_request_date}, today={today}")
             
-            if last_request_date is None or last_request_date != today:
+            # Сравниваем как строки
+            if last_request_date == '' or last_request_date != today:
                 await self.client.execute(
                     "UPDATE users SET daily_requests = 0, last_request_date = ? WHERE telegram_id = ?",
                     (today, user_id)
@@ -223,7 +224,7 @@ class Database:
         
         try:
             user_id = str(telegram_id)
-            today = date.today().isoformat()
+            today = str(date.today().isoformat())
             
             await self.client.execute(
                 """
@@ -371,7 +372,7 @@ class Database:
         
         try:
             user_id = str(telegram_id)
-            today = date.today().isoformat()
+            today = str(date.today().isoformat())
             
             result = await self.client.execute(
                 "SELECT daily_requests FROM users WHERE telegram_id = ? AND last_request_date = ?",
@@ -385,9 +386,9 @@ class Database:
             
             row = rows[0]
             if isinstance(row, (list, tuple)):
-                return extract_value(row[0]) or 0
+                return int(extract_value(row[0]) or 0)
             else:
-                return extract_value(row.get('daily_requests')) or 0
+                return int(extract_value(row.get('daily_requests')) or 0)
             
         except Exception as e:
             logger.error(f"Error getting today stats: {e}")
