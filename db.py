@@ -1,7 +1,7 @@
 import logging
 import json
 import aiohttp
-from datetime import datetime
+from datetime import datetime, date
 from typing import Optional, List, Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -14,14 +14,12 @@ class TursoClient:
         self.url = url.rstrip('/')
         self.token = token
         
-        # Convert libsql:// to https:// if needed
         if self.url.startswith("libsql://"):
             self.url = self.url.replace("libsql://", "https://")
         self.url = self.url.replace(":443", "")
         logger.info(f"✅ Turso client initialized with URL: {self.url}")
     
     def _format_params(self, params):
-        """Format parameters for Turso HTTP API"""
         if not params:
             return []
         formatted = []
@@ -41,7 +39,6 @@ class TursoClient:
         return formatted
     
     async def execute(self, sql: str, params: list = None):
-        """Execute SQL query via Turso HTTP API"""
         async with aiohttp.ClientSession() as session:
             headers = {
                 "Authorization": f"Bearer {self.token}",
@@ -67,7 +64,6 @@ class TursoClient:
 
 
 def extract_value(data):
-    """Extract value from Turso response"""
     if isinstance(data, dict) and 'value' in data:
         return data['value']
     return data
@@ -79,15 +75,12 @@ class Database:
         self._initialized = False
     
     async def _ensure_initialized(self):
-        """Ensure database tables are initialized"""
         if not self._initialized:
             await self._init_tables()
             self._initialized = True
     
     async def _init_tables(self):
-        """Initialize database tables if they don't exist."""
         try:
-            # Users table
             await self.client.execute("""
                 CREATE TABLE IF NOT EXISTS users (
                     telegram_id INTEGER PRIMARY KEY,
@@ -99,7 +92,6 @@ class Database:
                 )
             """)
             
-            # History table
             await self.client.execute("""
                 CREATE TABLE IF NOT EXISTS history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,7 +103,6 @@ class Database:
                 )
             """)
             
-            # Last requests table
             await self.client.execute("""
                 CREATE TABLE IF NOT EXISTS last_request (
                     telegram_id INTEGER PRIMARY KEY,
@@ -129,11 +120,9 @@ class Database:
             raise
     
     async def get_or_create_user(self, telegram_id: int, username: Optional[str] = None, first_name: Optional[str] = None):
-        """Get user or create if doesn't exist."""
         await self._ensure_initialized()
         
         try:
-            # Check if user exists
             result = await self.client.execute(
                 "SELECT * FROM users WHERE telegram_id = ?",
                 (telegram_id,)
@@ -142,13 +131,12 @@ class Database:
             rows = result.get('result', {}).get('rows', [])
             
             if not rows:
-                # Create new user
                 await self.client.execute(
                     """
-                    INSERT INTO users (telegram_id, username, first_name, daily_requests)
-                    VALUES (?, ?, ?, 0)
+                    INSERT INTO users (telegram_id, username, first_name, daily_requests, last_request_date)
+                    VALUES (?, ?, ?, 0, ?)
                     """,
-                    (telegram_id, username, first_name)
+                    (telegram_id, username, first_name, None)
                 )
                 return {
                     "telegram_id": telegram_id,
@@ -183,11 +171,11 @@ class Database:
             raise
     
     async def check_daily_limit(self, telegram_id: int) -> tuple[bool, int]:
-        """Check if user has reached daily limit. Returns (can_proceed, current_requests)."""
+        """Check if user has reached daily limit."""
         await self._ensure_initialized()
         
         try:
-            today = datetime.now().date().isoformat()
+            today = date.today().isoformat()
             
             result = await self.client.execute(
                 "SELECT daily_requests, last_request_date FROM users WHERE telegram_id = ?",
@@ -197,6 +185,8 @@ class Database:
             rows = result.get('result', {}).get('rows', [])
             
             if not rows:
+                # Пользователь не найден - создаем нового
+                await self.get_or_create_user(telegram_id)
                 return True, 0
             
             row = rows[0]
@@ -207,26 +197,28 @@ class Database:
                 daily_requests = extract_value(row.get('daily_requests')) or 0
                 last_request_date = extract_value(row.get('last_request_date'))
             
-            # Reset if new day
-            if last_request_date != today:
+            logger.info(f"User {telegram_id}: daily_requests={daily_requests}, last_request_date={last_request_date}, today={today}")
+            
+            # Если last_request_date None или отличается от сегодня - сбрасываем
+            if last_request_date is None or last_request_date != today:
                 await self.client.execute(
                     "UPDATE users SET daily_requests = 0, last_request_date = ? WHERE telegram_id = ?",
                     (today, telegram_id)
                 )
                 return True, 0
             
-            return daily_requests < 50, daily_requests
+            can_proceed = daily_requests < 50
+            return can_proceed, daily_requests
             
         except Exception as e:
             logger.error(f"Error checking daily limit: {e}")
-            return False, 0
+            return True, 0  # В случае ошибки разрешаем запрос
     
     async def increment_daily_requests(self, telegram_id: int):
-        """Increment daily request count."""
         await self._ensure_initialized()
         
         try:
-            today = datetime.now().date().isoformat()
+            today = date.today().isoformat()
             
             await self.client.execute(
                 """
@@ -243,7 +235,6 @@ class Database:
             raise
     
     async def save_history(self, telegram_id: int, input_text: str, output: str, style: str):
-        """Save to history."""
         await self._ensure_initialized()
         
         try:
@@ -260,7 +251,6 @@ class Database:
             raise
     
     async def save_last_request(self, telegram_id: int, input_text: str, output: str, style: str):
-        """Save or update last request."""
         await self._ensure_initialized()
         
         try:
@@ -277,7 +267,6 @@ class Database:
             raise
     
     async def get_last_request(self, telegram_id: int) -> Optional[Dict[str, Any]]:
-        """Get last request for user."""
         await self._ensure_initialized()
         
         try:
@@ -310,7 +299,6 @@ class Database:
             return None
     
     async def get_history(self, telegram_id: int, limit: int = 10) -> List[Dict[str, Any]]:
-        """Get user history."""
         await self._ensure_initialized()
         
         try:
@@ -351,7 +339,6 @@ class Database:
             return []
     
     async def clear_history(self, telegram_id: int):
-        """Clear user history."""
         await self._ensure_initialized()
         
         try:
@@ -365,11 +352,10 @@ class Database:
             raise
     
     async def get_today_stats(self, telegram_id: int) -> int:
-        """Get today's request count."""
         await self._ensure_initialized()
         
         try:
-            today = datetime.now().date().isoformat()
+            today = date.today().isoformat()
             
             result = await self.client.execute(
                 "SELECT daily_requests FROM users WHERE telegram_id = ? AND last_request_date = ?",
