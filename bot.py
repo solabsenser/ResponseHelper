@@ -62,33 +62,33 @@ class ReplyStates(StatesGroup):
 
 # Helper functions
 def get_main_keyboard() -> InlineKeyboardMarkup:
-    """Get main inline keyboard."""
+    """Главное меню."""
     builder = InlineKeyboardBuilder()
-    builder.button(text="📝 Text", callback_data="action_text")
-    builder.button(text="📸 Screenshot", callback_data="action_image")
-    builder.button(text="🎤 Voice", callback_data="action_voice")
-    builder.button(text="📊 History", callback_data="action_history")
-    builder.button(text="📈 Stats", callback_data="action_stats")
-    builder.button(text="🗑 Clear History", callback_data="action_clear")
+    builder.button(text="📝 Текст", callback_data="action_text")
+    builder.button(text="📸 Скриншот", callback_data="action_image")
+    builder.button(text="🎤 Голос", callback_data="action_voice")
+    builder.button(text="📊 История", callback_data="action_history")
+    builder.button(text="📈 Статистика", callback_data="action_stats")
+    builder.button(text="🗑 Очистить историю", callback_data="action_clear")
     builder.adjust(2)
     return builder.as_markup()
 
 
 def get_style_keyboard() -> InlineKeyboardMarkup:
-    """Get style selection keyboard."""
+    """Клавиатура выбора стиля."""
     builder = InlineKeyboardBuilder()
     styles = [
-        ("🙂 Calm", "calm"),
-        ("😎 Confident", "confident"),
-        ("😂 Funny", "funny"),
-        ("🔥 Hard", "hard"),
-        ("❤️ Friendly", "friendly"),
-        ("💼 Business", "business"),
-        ("🧠 Smart", "smart"),
-        ("🤝 End conflict", "conflict"),
-        ("😏 Sarcastic", "sarcastic"),
-        ("🎯 Short", "short"),
-        ("✨ Improve my reply", "improve")
+        ("🙂 Спокойный", "calm"),
+        ("😎 Уверенный", "confident"),
+        ("😂 Смешной", "funny"),
+        ("🔥 Жесткий", "hard"),
+        ("❤️ Дружелюбный", "friendly"),
+        ("💼 Деловой", "business"),
+        ("🧠 Умный", "smart"),
+        ("🤝 Помирить", "conflict"),
+        ("😏 Саркастичный", "sarcastic"),
+        ("🎯 Короткий", "short"),
+        ("✨ Улучшить мой ответ", "improve")
     ]
     for label, style in styles:
         builder.button(text=label, callback_data=f"style_{style}")
@@ -97,25 +97,25 @@ def get_style_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_reply_keyboard() -> InlineKeyboardMarkup:
-    """Get keyboard after generating replies."""
+    """Клавиатура после генерации ответов."""
     builder = InlineKeyboardBuilder()
-    builder.button(text="🔄 More", callback_data="action_more")
-    builder.button(text="🎨 Change style", callback_data="action_change_style")
-    builder.button(text="🗑 Clear", callback_data="action_clear")
-    builder.button(text="🏠 Main", callback_data="action_main")
+    builder.button(text="🔄 Ещё варианты", callback_data="action_more")
+    builder.button(text="🎨 Сменить стиль", callback_data="action_change_style")
+    builder.button(text="🗑 Очистить", callback_data="action_clear")
+    builder.button(text="🏠 Главное меню", callback_data="action_main")
     builder.adjust(2)
     return builder.as_markup()
 
 
 def format_replies(replies: list) -> str:
-    """Format reply options for display."""
+    """Форматирование ответов."""
     return "\n\n".join([f"{i+1}. {reply}" for i, reply in enumerate(replies)])
 
 
-# Middleware to track user - исправленная версия для aiogram 3.x
+# Middleware
 @dp.message.middleware()
 async def user_middleware(handler, event, data):
-    """Track user and ensure they exist in database."""
+    """Отслеживание пользователя."""
     try:
         message = event
         if message and hasattr(message, 'from_user') and message.from_user:
@@ -132,7 +132,7 @@ async def user_middleware(handler, event, data):
 
 @dp.callback_query.middleware()
 async def callback_user_middleware(handler, event, data):
-    """Track user from callbacks."""
+    """Отслеживание пользователя из callback."""
     try:
         callback = event
         if callback and hasattr(callback, 'from_user') and callback.from_user:
@@ -150,20 +150,20 @@ async def callback_user_middleware(handler, event, data):
 # Command handlers
 @dp.message(Command("start"))
 async def cmd_start(message: Message):
-    """Handle /start command."""
+    """Команда /start."""
     welcome_text = (
-        "👋 <b>Welcome to ReplyGo!</b>\n\n"
-        "I'm your AI assistant that helps you craft the perfect replies.\n\n"
-        "<b>What I can do:</b>\n"
-        "📝 Generate replies from text\n"
-        "📸 Extract text from screenshots\n"
-        "🎤 Transcribe and reply to voice messages\n\n"
-        "<b>How to use:</b>\n"
-        "1. Send me a message, screenshot, or voice\n"
-        "2. Choose a reply style\n"
-        "3. Get 3 natural reply options!\n\n"
-        "<b>Daily limit:</b> 50 requests\n\n"
-        "Click the button below to get started! 👇"
+        "👋 <b>Добро пожаловать в ReplyGo!</b>\n\n"
+        "Я твой AI-помощник для создания идеальных ответов.\n\n"
+        "<b>Что я умею:</b>\n"
+        "📝 Генерировать ответы из текста\n"
+        "📸 Извлекать текст из скриншотов\n"
+        "🎤 Расшифровывать и отвечать на голосовые сообщения\n\n"
+        "<b>Как пользоваться:</b>\n"
+        "1. Отправь мне текст, скриншот или голосовое\n"
+        "2. Выбери стиль ответа\n"
+        "3. Получи 3 варианта ответа!\n\n"
+        "<b>Лимит:</b> 50 запросов в день\n\n"
+        "Нажми на кнопку ниже, чтобы начать! 👇"
     )
     
     keyboard = get_main_keyboard()
@@ -173,25 +173,23 @@ async def cmd_start(message: Message):
 # Message handlers
 @dp.message(F.text & ~F.text.startswith('/'))
 async def handle_text(message: Message, state: FSMContext):
-    """Handle text messages."""
+    """Обработка текстовых сообщений."""
     user_id = message.from_user.id
     
-    # Check daily limit
     can_proceed, count = await db.check_daily_limit(user_id)
     if not can_proceed:
         await message.answer(
-            "⚠️ You've reached your daily limit of 50 requests.\n"
-            "Please try again tomorrow! 🌙"
+            "⚠️ Ты достиг дневного лимита в 50 запросов.\n"
+            "Попробуй завтра! 🌙"
         )
         return
     
-    # Store text in state
     await state.update_data(content_type="text", content=message.text)
     await state.set_state(ReplyStates.waiting_for_style_after_text)
     
     await message.answer(
-        f"📝 <b>Great! Now choose a reply style:</b>\n\n"
-        f"Message: \"{message.text[:50]}{'...' if len(message.text) > 50 else ''}\"",
+        f"📝 <b>Отлично! Теперь выбери стиль ответа:</b>\n\n"
+        f"Сообщение: \"{message.text[:50]}{'...' if len(message.text) > 50 else ''}\"",
         reply_markup=get_style_keyboard(),
         parse_mode="HTML"
     )
@@ -199,75 +197,62 @@ async def handle_text(message: Message, state: FSMContext):
 
 @dp.message(F.photo)
 async def handle_photo(message: Message, state: FSMContext):
-    """Handle photo messages."""
+    """Обработка фото."""
     user_id = message.from_user.id
     
-    # Check daily limit
     can_proceed, count = await db.check_daily_limit(user_id)
     if not can_proceed:
         await message.answer(
-            "⚠️ You've reached your daily limit of 50 requests.\n"
-            "Please try again tomorrow! 🌙"
+            "⚠️ Ты достиг дневного лимита в 50 запросов.\n"
+            "Попробуй завтра! 🌙"
         )
         return
     
-    # Download and process photo
-    await message.answer("📸 Processing your screenshot... This may take a moment.")
+    await message.answer("📸 Обрабатываю твой скриншот... Это может занять несколько секунд.")
     
     try:
         photo = message.photo[-1]
         file = await bot.get_file(photo.file_id)
         file_path = file.file_path
         
-        # Download to temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
             await bot.download_file(file_path, tmp_file.name)
             tmp_path = tmp_file.name
         
-        # OCR the image
         text = ocr_image(tmp_path)
-        
-        # Clean up temp file
         os.unlink(tmp_path)
         
         if not text:
-            # Try Groq Vision
-            await message.answer("🔄 Trying AI vision for text extraction...")
+            await message.answer("🔄 Пробую AI зрение для извлечения текста...")
             
-            # Download image for Groq Vision
             with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp_file:
                 await bot.download_file(file_path, tmp_file.name)
                 image_path = tmp_file.name
             
-            # Generate replies using Groq Vision
             replies = ai.generate("image", image_path, "smart")
-            
-            # Clean up
             os.unlink(image_path)
             
             if not replies or len(replies) < 3:
                 await message.answer(
-                    "❌ I couldn't extract text from this image.\n"
-                    "Please try with a clearer screenshot or send text instead."
+                    "❌ Не удалось извлечь текст из этого изображения.\n"
+                    "Попробуй отправить более четкий скриншот или просто текст."
                 )
                 return
             
-            # Store context
             await state.update_data(
                 content_type="image",
                 content=image_path,
-                extracted_text=text or "Unknown text"
+                extracted_text=text or "Неизвестный текст"
             )
             await state.set_state(ReplyStates.waiting_for_style_after_image)
             
             await message.answer(
-                "✅ Text extracted from image!\n\n"
-                "Now choose a reply style:",
+                "✅ Текст извлечен из изображения!\n\n"
+                "Теперь выбери стиль ответа:",
                 reply_markup=get_style_keyboard()
             )
             return
         
-        # Store text from OCR
         await state.update_data(
             content_type="text",
             content=text,
@@ -276,9 +261,9 @@ async def handle_photo(message: Message, state: FSMContext):
         await state.set_state(ReplyStates.waiting_for_style_after_text)
         
         await message.answer(
-            f"📝 <b>Text extracted from image:</b>\n\n"
+            f"📝 <b>Текст извлечен из изображения:</b>\n\n"
             f"\"{text[:100]}{'...' if len(text) > 100 else ''}\"\n\n"
-            "Now choose a reply style:",
+            "Теперь выбери стиль ответа:",
             reply_markup=get_style_keyboard(),
             parse_mode="HTML"
         )
@@ -286,58 +271,52 @@ async def handle_photo(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Error processing photo: {e}")
         await message.answer(
-            "❌ Sorry, I couldn't process this image.\n"
-            "Please try sending a clearer screenshot or use text instead."
+            "❌ Не удалось обработать это изображение.\n"
+            "Попробуй отправить более четкий скриншот или используй текст."
         )
 
 
 @dp.message(F.voice)
 async def handle_voice(message: Message, state: FSMContext):
-    """Handle voice messages using Groq Whisper API."""
+    """Обработка голосовых сообщений."""
     user_id = message.from_user.id
     
-    # Check daily limit
     can_proceed, count = await db.check_daily_limit(user_id)
     if not can_proceed:
         await message.answer(
-            "⚠️ You've reached your daily limit of 50 requests.\n"
-            "Please try again tomorrow! 🌙"
+            "⚠️ Ты достиг дневного лимита в 50 запросов.\n"
+            "Попробуй завтра! 🌙"
         )
         return
     
-    await message.answer("🎤 Transcribing your voice message... This may take a moment.")
+    await message.answer("🎤 Расшифровываю голосовое сообщение... Это может занять несколько секунд.")
     
     try:
         voice = message.voice
         file = await bot.get_file(voice.file_id)
         file_path = file.file_path
         
-        # Download to temp file
         with tempfile.NamedTemporaryFile(delete=False, suffix='.ogg') as tmp_file:
             await bot.download_file(file_path, tmp_file.name)
             voice_path = tmp_file.name
         
-        # Transcribe using Groq Whisper
         text = await ai.transcribe_audio(voice_path)
-        
-        # Clean up temp file
         os.unlink(voice_path)
         
         if not text or len(text.strip()) < 2:
             await message.answer(
-                "❌ I couldn't transcribe this voice message.\n"
-                "Please try speaking more clearly or send text instead."
+                "❌ Не удалось расшифровать голосовое сообщение.\n"
+                "Попробуй говорить более четко или отправь текст."
             )
             return
         
-        # Store text
         await state.update_data(content_type="text", content=text)
         await state.set_state(ReplyStates.waiting_for_style_after_voice)
         
         await message.answer(
-            f"📝 <b>Transcribed text:</b>\n\n"
+            f"📝 <b>Расшифрованный текст:</b>\n\n"
             f"\"{text[:100]}{'...' if len(text) > 100 else ''}\"\n\n"
-            "Now choose a reply style:",
+            "Теперь выбери стиль ответа:",
             reply_markup=get_style_keyboard(),
             parse_mode="HTML"
         )
@@ -345,20 +324,20 @@ async def handle_voice(message: Message, state: FSMContext):
     except Exception as e:
         logger.error(f"Error processing voice: {e}")
         await message.answer(
-            "❌ Sorry, I couldn't process this voice message.\n"
-            "Please try again or send text instead."
+            "❌ Не удалось обработать голосовое сообщение.\n"
+            "Попробуй еще раз или отправь текст."
         )
 
 
 def ocr_image(image_path: str) -> Optional[str]:
-    """Extract text from image using OCR."""
+    """Извлечение текста из изображения."""
     try:
         image = Image.open(image_path)
         image = preprocess_image(image)
-        text = pytesseract.image_to_string(image, lang='eng+rus')
+        text = pytesseract.image_to_string(image, lang='rus+eng')
         text = text.strip()
         if not text or len(text) < 3:
-            text = pytesseract.image_to_string(image, lang='eng')
+            text = pytesseract.image_to_string(image, lang='rus')
             text = text.strip()
         return text if text else None
     except Exception as e:
@@ -367,7 +346,7 @@ def ocr_image(image_path: str) -> Optional[str]:
 
 
 def preprocess_image(image: Image.Image) -> Image.Image:
-    """Preprocess image for better OCR using PIL only."""
+    """Предобработка изображения для OCR."""
     try:
         if image.mode != 'L':
             image = image.convert('L')
@@ -386,7 +365,7 @@ def preprocess_image(image: Image.Image) -> Image.Image:
 # Callback handlers
 @dp.callback_query(F.data.startswith("style_"))
 async def handle_style_selection(callback: CallbackQuery, state: FSMContext):
-    """Handle style selection."""
+    """Выбор стиля."""
     style = callback.data.replace("style_", "")
     user_id = callback.from_user.id
     
@@ -394,9 +373,24 @@ async def handle_style_selection(callback: CallbackQuery, state: FSMContext):
     content_type = data.get("content_type", "text")
     content = data.get("content")
     
+    # Словарь для перевода стилей на русский
+    style_names = {
+        "calm": "спокойный",
+        "confident": "уверенный",
+        "funny": "смешной",
+        "hard": "жесткий",
+        "friendly": "дружелюбный",
+        "business": "деловой",
+        "smart": "умный",
+        "conflict": "помирить",
+        "sarcastic": "саркастичный",
+        "short": "короткий",
+        "improve": "улучшить ответ"
+    }
+    
     if not content:
         await callback.message.edit_text(
-            "❌ Something went wrong. Please start over with /start"
+            "❌ Что-то пошло не так. Начни заново с /start"
         )
         await callback.answer()
         return
@@ -407,7 +401,7 @@ async def handle_style_selection(callback: CallbackQuery, state: FSMContext):
         elif content_type == "text":
             replies = ai.generate("text", content, style)
         else:
-            replies = ["I couldn't generate replies for this content type."] * 3
+            replies = ["Не удалось сгенерировать ответы."] * 3
         
         await db.increment_daily_requests(user_id)
         await db.save_history(user_id, str(content)[:500], "\n".join(replies), style)
@@ -415,12 +409,13 @@ async def handle_style_selection(callback: CallbackQuery, state: FSMContext):
         
         replies_text = format_replies(replies)
         today_stats = await db.get_today_stats(user_id)
+        style_ru = style_names.get(style, style)
         
         await callback.message.edit_text(
-            f"🎯 <b>Here are your reply options</b> [{style} style]\n\n"
+            f"🎯 <b>Вот твои варианты ответов</b> [стиль: {style_ru}]\n\n"
             f"{replies_text}\n\n"
-            f"📊 Today's usage: {today_stats}/50\n\n"
-            "What would you like to do next?",
+            f"📊 Сегодня использовано: {today_stats}/50\n\n"
+            "Что хочешь сделать дальше?",
             reply_markup=get_reply_keyboard(),
             parse_mode="HTML"
         )
@@ -436,8 +431,8 @@ async def handle_style_selection(callback: CallbackQuery, state: FSMContext):
     except Exception as e:
         logger.error(f"Error generating replies: {e}")
         await callback.message.edit_text(
-            "❌ Sorry, I couldn't generate replies right now.\n"
-            "Please try again later."
+            "❌ Не удалось сгенерировать ответы.\n"
+            "Попробуй позже."
         )
         await callback.answer()
 
@@ -445,9 +440,9 @@ async def handle_style_selection(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "action_text")
 async def handle_action_text(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "📝 <b>Send me any text message</b>\n\n"
-        "I'll analyze it and generate 3 natural reply options.\n\n"
-        "Just type your message below! ✍️",
+        "📝 <b>Отправь мне любое текстовое сообщение</b>\n\n"
+        "Я проанализирую его и сгенерирую 3 варианта ответа.\n\n"
+        "Просто напиши сообщение ниже! ✍️",
         parse_mode="HTML"
     )
     await state.set_state(ReplyStates.waiting_for_text)
@@ -457,9 +452,9 @@ async def handle_action_text(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "action_image")
 async def handle_action_image(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "📸 <b>Send me a screenshot</b>\n\n"
-        "I'll extract text from it and generate reply options.\n\n"
-        "Make sure the text is clear and readable! 📱",
+        "📸 <b>Отправь мне скриншот</b>\n\n"
+        "Я извлеку текст из него и сгенерирую варианты ответов.\n\n"
+        "Убедись, что текст четкий и читаемый! 📱",
         parse_mode="HTML"
     )
     await state.set_state(ReplyStates.waiting_for_image)
@@ -469,9 +464,9 @@ async def handle_action_image(callback: CallbackQuery, state: FSMContext):
 @dp.callback_query(F.data == "action_voice")
 async def handle_action_voice(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(
-        "🎤 <b>Send me a voice message</b>\n\n"
-        "I'll transcribe it and generate reply options.\n\n"
-        "Speak clearly for best results! 🗣️",
+        "🎤 <b>Отправь мне голосовое сообщение</b>\n\n"
+        "Я расшифрую его и сгенерирую варианты ответов.\n\n"
+        "Говори четко для лучшего результата! 🗣️",
         parse_mode="HTML"
     )
     await state.set_state(ReplyStates.waiting_for_voice)
@@ -485,31 +480,31 @@ async def handle_action_history(callback: CallbackQuery):
     
     if not history:
         await callback.message.edit_text(
-            "📊 <b>Your history is empty</b>\n\n"
-            "Start generating replies to build your history!",
+            "📊 <b>Твоя история пуста</b>\n\n"
+            "Начни генерировать ответы, чтобы заполнить историю!",
             parse_mode="HTML"
         )
         await callback.answer()
         return
     
-    history_text = "📊 <b>Your Reply History</b>\n\n"
+    history_text = "📊 <b>Твоя история ответов</b>\n\n"
     for i, item in enumerate(history[:5], 1):
         created_at = item.get('created_at', '')
         if isinstance(created_at, str):
             created_at = created_at[:19]
         history_text += f"#{i} <b>{item['style']}</b>\n"
-        history_text += f"📝 Input: {item['input'][:50]}...\n"
-        history_text += f"💬 Output: {item['output'][:50]}...\n"
+        history_text += f"📝 Вход: {item['input'][:50]}...\n"
+        history_text += f"💬 Ответ: {item['output'][:50]}...\n"
         history_text += f"⏰ {created_at}\n\n"
     
     if len(history) > 5:
-        history_text += f"\n... and {len(history) - 5} more entries"
+        history_text += f"\n... и еще {len(history) - 5} записей"
     
     await callback.message.edit_text(
         history_text,
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Back", callback_data="action_main")]
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="action_main")]
         ])
     )
     await callback.answer()
@@ -523,13 +518,13 @@ async def handle_action_stats(callback: CallbackQuery):
     history_count = len(history)
     
     await callback.message.edit_text(
-        f"📈 <b>Your Stats</b>\n\n"
-        f"Today's usage: {today_stats}/50\n"
-        f"Total in history: {history_count}\n\n"
-        "Keep going! 💪",
+        f"📈 <b>Твоя статистика</b>\n\n"
+        f"Сегодня использовано: {today_stats}/50\n"
+        f"Всего в истории: {history_count}\n\n"
+        "Продолжай в том же духе! 💪",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Back", callback_data="action_main")]
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="action_main")]
         ])
     )
     await callback.answer()
@@ -542,11 +537,11 @@ async def handle_action_clear(callback: CallbackQuery, state: FSMContext):
     await state.clear()
     
     await callback.message.edit_text(
-        "🗑 <b>Your history has been cleared</b>\n\n"
-        "Ready to start fresh! ✨",
+        "🗑 <b>История очищена</b>\n\n"
+        "Готов начать заново! ✨",
         parse_mode="HTML",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🏠 Main Menu", callback_data="action_main")]
+            [InlineKeyboardButton(text="🏠 Главное меню", callback_data="action_main")]
         ])
     )
     await callback.answer()
@@ -559,8 +554,8 @@ async def handle_action_more(callback: CallbackQuery, state: FSMContext):
     can_proceed, count = await db.check_daily_limit(user_id)
     if not can_proceed:
         await callback.message.edit_text(
-            "⚠️ You've reached your daily limit of 50 requests.\n"
-            "Please try again tomorrow! 🌙"
+            "⚠️ Ты достиг дневного лимита в 50 запросов.\n"
+            "Попробуй завтра! 🌙"
         )
         await callback.answer()
         return
@@ -571,7 +566,7 @@ async def handle_action_more(callback: CallbackQuery, state: FSMContext):
     
     if not content:
         await callback.message.edit_text(
-            "❌ I lost your context. Please start over with /start"
+            "❌ Я потерял контекст. Начни заново с /start"
         )
         await callback.answer()
         return
@@ -586,10 +581,10 @@ async def handle_action_more(callback: CallbackQuery, state: FSMContext):
     today_stats = await db.get_today_stats(user_id)
     
     await callback.message.edit_text(
-        f"🔄 <b>New reply options</b> [{style} style]\n\n"
+        f"🔄 <b>Новые варианты ответов</b> [стиль: {style}]\n\n"
         f"{replies_text}\n\n"
-        f"📊 Today's usage: {today_stats}/50\n\n"
-        "What would you like to do next?",
+        f"📊 Сегодня использовано: {today_stats}/50\n\n"
+        "Что хочешь сделать дальше?",
         reply_markup=get_reply_keyboard(),
         parse_mode="HTML"
     )
@@ -603,7 +598,7 @@ async def handle_action_change_style(callback: CallbackQuery, state: FSMContext)
     
     if not content:
         await callback.message.edit_text(
-            "❌ I lost your context. Please start over with /start"
+            "❌ Я потерял контекст. Начни заново с /start"
         )
         await callback.answer()
         return
@@ -612,8 +607,8 @@ async def handle_action_change_style(callback: CallbackQuery, state: FSMContext)
     await state.set_state(ReplyStates.waiting_for_style_after_text)
     
     await callback.message.edit_text(
-        "🎨 <b>Choose a new style:</b>\n\n"
-        "Pick a different style to get new reply options.",
+        "🎨 <b>Выбери новый стиль:</b>\n\n"
+        "Выбери другой стиль, чтобы получить новые варианты ответов.",
         reply_markup=get_style_keyboard(),
         parse_mode="HTML"
     )
@@ -623,40 +618,34 @@ async def handle_action_change_style(callback: CallbackQuery, state: FSMContext)
 @dp.callback_query(F.data == "action_main")
 async def handle_action_main(callback: CallbackQuery):
     await callback.message.edit_text(
-        "🏠 <b>Main Menu</b>\n\n"
-        "What would you like to do?",
+        "🏠 <b>Главное меню</b>\n\n"
+        "Что хочешь сделать?",
         parse_mode="HTML",
         reply_markup=get_main_keyboard()
     )
     await callback.answer()
 
 
-# Error handler - исправленная версия
+# Error handler
 @dp.errors()
 async def error_handler(event, exception):
-    """Handle errors gracefully."""
     logger.error(f"Event: {event}, Exception: {exception}")
-    
-    # Try to notify user if possible
     try:
         if hasattr(event, 'message') and event.message:
-            await event.message.answer("❌ An error occurred. Please try again later.")
+            await event.message.answer("❌ Произошла ошибка. Попробуй позже.")
         elif hasattr(event, 'callback_query') and event.callback_query:
-            await event.callback_query.message.answer("❌ An error occurred. Please try again later.")
+            await event.callback_query.message.answer("❌ Произошла ошибка. Попробуй позже.")
     except:
         pass
-    
     return True
 
 
 # Web server for health check
 async def health_check(request):
-    """Health check endpoint for Render."""
     return web.Response(text="OK", status=200)
 
 
 async def start_web():
-    """Start web server for health checks."""
     app = web.Application()
     app.router.add_get('/', health_check)
     app.router.add_get('/health', health_check)
@@ -669,17 +658,11 @@ async def start_web():
 
 
 async def main():
-    """Main entry point."""
     try:
-        # Initialize database tables
         await db._ensure_initialized()
         logger.info("✅ Database initialized")
-        
-        # Start web server for health checks
         await start_web()
-        
-        # Start bot
-        logger.info("🚀 Starting ReplyGo bot...")
+        logger.info("🚀 Запускаю ReplyGo бота...")
         await dp.start_polling(bot)
     except Exception as e:
         logger.error(f"Error starting bot: {e}")
