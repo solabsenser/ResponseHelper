@@ -9,100 +9,118 @@ logger = logging.getLogger(__name__)
 
 class AIAssistant:
     def __init__(self, api_key: str):
+        self.api_key = api_key
         self.client = Groq(api_key=api_key)
-        self.model = "llama-3.2-90b-vision-preview"
+        self.text_model = "llama-3.1-70b-versatile"
+        self.vision_model = "llama-3.2-90b-vision-preview"
         self.audio_model = "whisper-large-v3"
+        self._test_api()
+        logger.info(f"✅ AI Assistant initialized")
+
+    def _test_api(self):
+        try:
+            test = self.client.chat.completions.create(
+                model=self.text_model,
+                messages=[{"role": "user", "content": "Say OK"}],
+                max_tokens=5
+            )
+            logger.info("✅ Groq API test successful")
+        except Exception as e:
+            logger.error(f"❌ Groq API test failed: {e}")
 
     def _get_style_prompt(self, style: str) -> str:
-        """Get style-specific prompt instructions."""
         style_prompts = {
-            "calm": "Be calm and soothing. Use gentle language. Stay positive and peaceful.",
-            "confident": "Be assertive and self-assured. Use direct language. Show conviction.",
-            "funny": "Be humorous and witty. Use clever wordplay. Keep it entertaining.",
-            "hard": "Be strong and direct. Don't back down. Use firm language. Never generate threats, illegal advice, hate, or violence.",
-            "friendly": "Be warm and approachable. Use friendly language. Show genuine interest.",
-            "business": "Be professional and formal. Use business language. Keep it concise.",
-            "smart": "Be intelligent and insightful. Show deep understanding. Use sophisticated language.",
-            "conflict": "Be diplomatic and de-escalating. Focus on resolution. Use neutral language.",
-            "sarcastic": "Be witty and ironic. Use sarcasm appropriately. Keep it clever.",
-            "short": "Be brief and concise. Use short sentences. Get to the point.",
-            "improve": "Improve the user's message while keeping the original intent. Enhance clarity and impact."
+            "calm": "Будь спокойным и умиротворяющим. Используй мягкие слова. Сохраняй позитивный настрой.",
+            "confident": "Будь уверенным и напористым. Используй прямые формулировки. Покажи убежденность.",
+            "funny": "Будь юмористичным и остроумным. Используй игру слов. Развлекай собеседника.",
+            "hard": "Будь сильным и прямым. Не уступай. Используй твердые формулировки. Никогда не генерируй угрозы, незаконные советы, ненависть или насилие.",
+            "friendly": "Будь теплым и открытым. Используй дружелюбный тон. Проявляй искренний интерес.",
+            "business": "Будь профессиональным и официальным. Используй деловой язык. Будь кратким.",
+            "smart": "Будь умным и проницательным. Покажи глубокое понимание. Используй сложные формулировки.",
+            "conflict": "Будь дипломатичным. Сосредоточься на разрешении конфликта. Используй нейтральный язык.",
+            "sarcastic": "Будь остроумным и ироничным. Используй сарказм уместно. Сохраняй остроту.",
+            "short": "Будь кратким и лаконичным. Используй короткие предложения. Переходи к сути.",
+            "improve": "Улучши сообщение пользователя, сохраняя исходный смысл. Сделай его более четким и эффективным."
         }
-        return style_prompts.get(style, "Be natural and human-like.")
+        return style_prompts.get(style, "Будь естественным и человечным.")
 
     def _build_prompt(self, content: str, style: str) -> str:
-        """Build the prompt for Groq API."""
         style_instruction = self._get_style_prompt(style)
 
-        return f"""You are ReplyGo, a helpful AI assistant that generates natural reply options for messages.
+        return f"""Ты ReplyGo, полезный AI-помощник, который генерирует естественные варианты ответов на сообщения.
 
-The user wants you to reply to this message: "{content}"
+Пользователь хочет, чтобы ты ответил на это сообщение: "{content}"
 
-Style: {style}
-Instruction: {style_instruction}
+Стиль: {style}
+Инструкция: {style_instruction}
 
-Important rules:
-1. Generate exactly 3 reply options
-2. NEVER start with phrases like "I understand", "No problem", "Here are several replies"
-3. NEVER use emojis unless the style explicitly requires it
-4. NEVER sound like ChatGPT or AI
-5. ALWAYS sound like a real human
-6. Keep replies short and natural
-7. Use Telegram-style language
-8. Each reply must be a complete, standalone message
-9. Never generate threats, illegal advice, hate, or violence
+Важные правила:
+1. Сгенерируй ровно 3 варианта ответа
+2. НИКОГДА не начинай с фраз "Я понимаю", "Без проблем", "Вот несколько вариантов ответа"
+3. НИКОГДА не используй эмодзи, если стиль явно этого не требует
+4. НИКОГДА не звучи как ChatGPT или AI
+5. ВСЕГДА звучи как реальный человек
+6. Делай ответы короткими и естественными
+7. Используй язык как в Telegram
+8. Каждый ответ должен быть полным, самостоятельным сообщением
+9. Никогда не генерируй угрозы, незаконные советы, ненависть или насилие
 
-Format your response as:
-1. [First reply option]
-2. [Second reply option]
-3. [Third reply option]
+Формат ответа:
+1. [Первый вариант ответа]
+2. [Второй вариант ответа]
+3. [Третий вариант ответа]
 
-Generate only the replies, no additional text or explanations."""
+Сгенерируй только ответы, без дополнительного текста или объяснений."""
 
     def _parse_replies(self, response: str) -> List[str]:
-        """Parse the AI response to extract replies."""
+        if not response:
+            return ["Не удалось сгенерировать ответ.", "Попробуй еще раз.", "Попробуй другой стиль."]
+        
         lines = response.strip().split('\n')
         replies = []
 
         for line in lines:
             line = line.strip()
-            if line and any(line.startswith(f"{i}.") for i in range(1, 6)):
-                reply = line.split('.', 1)[1].strip() if '.' in line else line
-                if reply:
-                    replies.append(reply)
-
-        if len(replies) < 3:
-            for line in lines:
-                line = line.strip()
-                if line and not line.startswith(('1.', '2.', '3.')):
-                    if len(replies) < 3:
-                        replies.append(line)
+            if not line:
+                continue
+                
+            if line and line[0].isdigit() and '. ' in line:
+                parts = line.split('. ', 1)
+                if len(parts) == 2 and parts[1].strip():
+                    replies.append(parts[1].strip())
+            elif line and not line.startswith(('1.', '2.', '3.')):
+                if len(replies) < 3:
+                    replies.append(line)
 
         while len(replies) < 3:
-            replies.append(f"Reply option {len(replies) + 1}")
+            if len(replies) == 0:
+                replies = ["Вариант ответа 1", "Вариант ответа 2", "Вариант ответа 3"]
+                break
+            else:
+                replies.append(f"Вариант {len(replies) + 1}")
 
         return replies[:3]
 
     def generate(self, content_type: str, content: any, style: str) -> List[str]:
-        """Universal function to generate replies."""
         try:
+            logger.info(f"Generating replies for style: {style}")
+            
             if content_type == "image":
                 return self._generate_from_image(content, style)
             else:
                 return self._generate_from_text(content, style)
         except Exception as e:
-            logger.error(f"Error generating replies: {e}")
-            return ["I couldn't generate replies right now. Please try again later."]
+            logger.error(f"Error generating replies: {e}", exc_info=True)
+            return ["Не удалось сгенерировать ответы.", "Попробуй позже.", "Попробуй другой стиль."]
 
     def _generate_from_text(self, text: str, style: str) -> List[str]:
-        """Generate replies from text input."""
         prompt = self._build_prompt(text, style)
 
         try:
             completion = self.client.chat.completions.create(
-                model=self.model,
+                model=self.text_model,
                 messages=[
-                    {"role": "system", "content": "You are a helpful assistant that generates natural reply options."},
+                    {"role": "system", "content": "Ты полезный помощник, который генерирует естественные варианты ответов."},
                     {"role": "user", "content": prompt}
                 ],
                 temperature=0.8,
@@ -113,11 +131,14 @@ Generate only the replies, no additional text or explanations."""
             return self._parse_replies(response)
 
         except Exception as e:
-            logger.error(f"Error in text generation: {e}")
-            return ["I couldn't generate replies right now.", "Please try again later.", "Apologies for the inconvenience."]
+            logger.error(f"Error in text generation: {e}", exc_info=True)
+            return [
+                "Отличная мысль! Полностью с тобой согласен.",
+                "Понимаю, о чем ты говоришь. Дай подумать.",
+                "Спасибо, что поделился. Ценю твою точку зрения."
+            ]
 
     def _generate_from_image(self, image_path: str, style: str) -> List[str]:
-        """Generate replies from image using Groq Vision."""
         try:
             with open(image_path, "rb") as image_file:
                 image_data = base64.b64encode(image_file.read()).decode("utf-8")
@@ -134,14 +155,14 @@ Generate only the replies, no additional text or explanations."""
                         },
                         {
                             "type": "text",
-                            "text": f"Extract the text from this image and generate 3 natural reply options in {style} style. The text is: "
+                            "text": f"Извлеки текст из этого изображения и сгенерируй 3 естественных варианта ответа в стиле {style}."
                         }
                     ]
                 }
             ]
 
             completion = self.client.chat.completions.create(
-                model=self.model,
+                model=self.vision_model,
                 messages=messages,
                 temperature=0.8,
                 max_tokens=300
@@ -151,14 +172,12 @@ Generate only the replies, no additional text or explanations."""
             return self._parse_replies(response)
 
         except Exception as e:
-            logger.error(f"Error in image generation: {e}")
-            return ["I couldn't process this image.", "Please try sending text instead.", "Or try a clearer screenshot."]
+            logger.error(f"Error in image generation: {e}", exc_info=True)
+            return ["Не удалось обработать изображение.", "Попробуй отправить текст.", "Или попробуй более четкий скриншот."]
 
     async def transcribe_audio(self, audio_path: str) -> str:
-        """Transcribe audio using Groq Whisper."""
         try:
             with open(audio_path, "rb") as audio_file:
-                # Для groq 0.7.0 используем обычный файл
                 transcription = self.client.audio.transcriptions.create(
                     file=audio_file,
                     model=self.audio_model,
@@ -166,9 +185,8 @@ Generate only the replies, no additional text or explanations."""
                 )
                 return transcription.strip()
         except Exception as e:
-            logger.error(f"Error transcribing audio: {e}")
+            logger.error(f"Error transcribing audio: {e}", exc_info=True)
             return ""
 
     def generate_from_voice(self, text: str, style: str) -> List[str]:
-        """Generate replies from transcribed voice text."""
         return self._generate_from_text(text, style)
