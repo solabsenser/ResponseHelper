@@ -2,7 +2,6 @@ import logging
 import base64
 from typing import List, Optional
 import os
-import json
 from groq import Groq
 
 logger = logging.getLogger(__name__)
@@ -13,10 +12,10 @@ class AIAssistant:
         self.api_key = api_key
         self.client = Groq(api_key=api_key)
         
-        # Используем только рабочие модели
-        self.text_model = "llama-3.1-70b-versatile"
-        self.vision_model = "llama-3.2-11b-vision-preview"
-        self.audio_model = "whisper-large-v3"
+        # 🔥 АКТУАЛЬНЫЕ МОДЕЛИ (работают на 100%)
+        self.text_model = "llama-3.3-70b-versatile"      # Самая новая текстовая
+        self.vision_model = "llama-3.2-11b-vision-preview"  # Для изображений
+        self.audio_model = "whisper-large-v3"            # Для голоса
         
         logger.info("=" * 50)
         logger.info("🤖 ИНИЦИАЛИЗАЦИЯ AI АССИСТЕНТА")
@@ -28,93 +27,81 @@ class AIAssistant:
         self._test_api()
 
     def _test_api(self):
-        """Проверка API ключа"""
+        """Проверка API ключа и доступности моделей"""
         try:
             logger.info("🔄 Тестирую подключение к Groq API...")
             
+            # Пробуем новую модель
             test = self.client.chat.completions.create(
                 model=self.text_model,
                 messages=[{"role": "user", "content": "Скажи ОК"}],
-                max_tokens=5,
-                temperature=0.1
+                max_tokens=5
             )
             
             result = test.choices[0].message.content
-            logger.info(f"✅ Groq API работает! Ответ: {result}")
+            logger.info(f"✅ Groq API работает! Модель {self.text_model} доступна")
+            logger.info(f"✅ Ответ: {result}")
             
         except Exception as e:
-            logger.error(f"❌ Ошибка подключения к Groq API: {e}")
-            logger.error(f"⚠️ Проверь GROQ_API_KEY в настройках Render")
-            logger.error(f"⚠️ Убедись, что ключ активен на https://console.groq.com")
+            logger.error(f"❌ Ошибка: {e}")
+            logger.error("⚠️ Проверь GROQ_API_KEY в настройках Render")
+            logger.error("⚠️ Также проверь https://console.groq.com/docs/models")
 
     def _get_style_prompt(self, style: str) -> str:
         """Промпты для стилей"""
         styles = {
-            "calm": "Спокойный, мягкий, умиротворяющий тон",
-            "confident": "Уверенный, прямой, убедительный тон",
-            "funny": "Юмористичный, остроумный, игривый тон",
-            "hard": "Твердый, прямой, бескомпромиссный тон",
-            "friendly": "Дружелюбный, теплый, открытый тон",
-            "business": "Деловой, профессиональный, официальный тон",
-            "smart": "Умный, проницательный, глубокий тон",
-            "conflict": "Дипломатичный, примиряющий, нейтральный тон",
-            "sarcastic": "Саркастичный, ироничный, острый тон",
-            "short": "Краткий, лаконичный, по делу",
-            "improve": "Улучшить сообщение, сделать его лучше"
+            "calm": "Спокойный, мягкий, умиротворяющий тон. Используй добрые слова.",
+            "confident": "Уверенный, прямой, убедительный тон. Без сомнений.",
+            "funny": "Юмористичный, остроумный, игривый тон. Добавь легкую иронию.",
+            "hard": "Твердый, прямой, бескомпромиссный тон. Без мягкостей.",
+            "friendly": "Дружелюбный, теплый, открытый тон. Как лучший друг.",
+            "business": "Деловой, профессиональный, официальный тон. Сухо и по делу.",
+            "smart": "Умный, проницательный, глубокий тон. Покажи эрудицию.",
+            "conflict": "Дипломатичный, примиряющий, нейтральный тон. Сгладь углы.",
+            "sarcastic": "Саркастичный, ироничный, острый тон. С хитринкой.",
+            "short": "Краткий, лаконичный, только суть. Максимум 5 слов.",
+            "improve": "Улучши сообщение пользователя, сделай его лучше и понятнее."
         }
-        return styles.get(style, "Естественный человеческий тон")
+        return styles.get(style, "Естественный человеческий тон в переписке")
 
     def _build_prompt(self, content: str, style: str) -> str:
         """Создание промпта"""
         style_desc = self._get_style_prompt(style)
-        
-        # Название стиля на русском
         style_names = {
-            "calm": "спокойный",
-            "confident": "уверенный",
-            "funny": "смешной",
-            "hard": "жесткий",
-            "friendly": "дружелюбный",
-            "business": "деловой",
-            "smart": "умный",
-            "conflict": "дипломатичный",
-            "sarcastic": "саркастичный",
-            "short": "короткий",
-            "improve": "улучшенный"
+            "calm": "спокойный", "confident": "уверенный", "funny": "смешной",
+            "hard": "жесткий", "friendly": "дружелюбный", "business": "деловой",
+            "smart": "умный", "conflict": "дипломатичный", "sarcastic": "саркастичный",
+            "short": "короткий", "improve": "улучшенный"
         }
         style_ru = style_names.get(style, style)
         
-        return f"""Ты — ReplyGo, ассистент для генерации ответов в Telegram.
+        return f"""Ты ReplyGo - ассистент для генерации ответов в Telegram.
 
 Сообщение пользователя: "{content}"
 
-Нужно сгенерировать 3 варианта ответа.
+Сгенерируй 3 варианта ответа.
 Стиль: {style_ru}
-Описание стиля: {style_desc}
+Характер: {style_desc}
 
-ВАЖНЫЕ ПРАВИЛА:
-1. Ответы должны звучать КАК ОТ РЕАЛЬНОГО ЧЕЛОВЕКА
-2. НЕ используй шаблонные фразы: "Я понимаю", "Без проблем", "Вот несколько вариантов"
-3. НЕ используй эмодзи (если только это не требуется стилем)
-4. НЕ используй "AI-слова": "безусловно", "в заключение", "следует отметить"
-5. Каждый ответ должен быть РАЗНЫМ по смыслу
-6. Ответы должны быть КОРОТКИМИ (1-2 предложения)
-7. Используй разговорный язык как в переписке
+ПРАВИЛА (строго соблюдать):
+1. Ответы как от реального человека, НЕ как ChatGPT
+2. НЕ используй: "Я понимаю", "Без проблем", "Вот варианты"
+3. НЕ используй эмодзи и восклицательные знаки
+4. Каждый ответ РАЗНЫЙ по смыслу
+5. Коротко (1-2 предложения)
+6. Разговорный язык
 
-Формат вывода (строго 3 пункта):
-1. [первый вариант ответа]
-2. [второй вариант ответа]
-3. [третий вариант ответа]
+Формат:
+1. [ответ 1]
+2. [ответ 2]
+3. [ответ 3]
 
 Только ответы, без пояснений!"""
 
     def _parse_replies(self, response: str) -> List[str]:
         """Парсинг ответов"""
         if not response:
-            logger.warning("⚠️ Пустой ответ от модели")
             return self._get_fallback_replies()
-        
-        logger.info(f"📥 Сырой ответ от модели: {response[:200]}...")
         
         lines = response.strip().split('\n')
         replies = []
@@ -124,7 +111,7 @@ class AIAssistant:
             if not line:
                 continue
             
-            # Ищем формат "1. ответ" или "1) ответ"
+            # Формат "1. ответ" или "1) ответ"
             if line and len(line) > 2 and line[0].isdigit():
                 if '. ' in line:
                     parts = line.split('. ', 1)
@@ -137,34 +124,28 @@ class AIAssistant:
                         replies.append(parts[1].strip())
                         continue
             
-            # Если строка не начинается с цифры, добавляем как есть (если не хватает)
+            # Если строка без номера
             if len(replies) < 3 and line:
                 replies.append(line)
         
-        # Если не хватает ответов
+        # Добиваем до 3
         while len(replies) < 3:
             if len(replies) == 0:
-                logger.warning("⚠️ Не удалось распарсить ответы")
                 return self._get_fallback_replies()
             replies.append(f"Вариант {len(replies) + 1}")
-        
-        logger.info(f"✅ Распаршено {len(replies)} ответов")
-        for i, r in enumerate(replies, 1):
-            logger.info(f"  {i}. {r[:50]}...")
         
         return replies[:3]
 
     def _get_fallback_replies(self) -> List[str]:
         """Запасные ответы"""
-        logger.warning("⚠️ Использую запасные ответы")
         return [
-            "Отличная мысль! Полностью поддерживаю.",
-            "Хорошо сказано! Давай обсудим детали.",
-            "Согласен с тобой. Отличный подход!"
+            "Хорошая мысль! Полностью поддерживаю.",
+            "Отличный подход! Давай обсудим детали.",
+            "Согласен с тобой. Действуй!"
         ]
 
     def generate(self, content_type: str, content: any, style: str) -> List[str]:
-        """Генерация ответов"""
+        """Главная функция генерации"""
         try:
             logger.info(f"🔄 Генерация | Тип: {content_type} | Стиль: {style}")
             
@@ -174,33 +155,29 @@ class AIAssistant:
                 return self._generate_from_text(content, style)
                 
         except Exception as e:
-            logger.error(f"❌ Ошибка генерации: {e}")
+            logger.error(f"❌ Ошибка: {e}")
             return self._get_fallback_replies()
 
     def _generate_from_text(self, text: str, style: str) -> List[str]:
         """Генерация из текста"""
         try:
             prompt = self._build_prompt(text, style)
-            logger.info(f"📝 Промпт: {prompt[:100]}...")
             
             response = self.client.chat.completions.create(
                 model=self.text_model,
                 messages=[
-                    {"role": "system", "content": "Ты ассистент для генерации естественных ответов."},
+                    {"role": "system", "content": "Ты ассистент для генерации ответов."},
                     {"role": "user", "content": prompt}
                 ],
-                temperature=0.8,
-                max_tokens=250,
-                top_p=0.9
+                temperature=0.85,
+                max_tokens=200
             )
             
             result = response.choices[0].message.content
-            logger.info("📥 Получен ответ от модели")
             return self._parse_replies(result)
             
         except Exception as e:
-            logger.error(f"❌ Ошибка текстовой генерации: {e}")
-            logger.error(f"Детали: {str(e)}")
+            logger.error(f"❌ Ошибка: {e}")
             return self._get_fallback_replies()
 
     def _generate_from_image(self, image_path: str, style: str) -> List[str]:
@@ -208,8 +185,6 @@ class AIAssistant:
         try:
             with open(image_path, "rb") as img:
                 image_data = base64.b64encode(img.read()).decode("utf-8")
-            
-            logger.info("🔄 Отправка изображения в Groq Vision...")
             
             messages = [
                 {
@@ -223,7 +198,7 @@ class AIAssistant:
                         },
                         {
                             "type": "text",
-                            "text": f"Извлеки текст из этого изображения и сгенерируй 3 ответа в стиле {style}. Ответы должны быть естественными и человечными."
+                            "text": f"Извлеки текст из изображения и сгенерируй 3 ответа в стиле {style}"
                         }
                     ]
                 }
@@ -237,19 +212,18 @@ class AIAssistant:
             )
             
             result = response.choices[0].message.content
-            logger.info("📥 Получен ответ от Vision модели")
             return self._parse_replies(result)
             
         except Exception as e:
-            logger.error(f"❌ Ошибка обработки изображения: {e}")
+            logger.error(f"❌ Ошибка изображения: {e}")
             return [
                 "Не удалось обработать изображение.",
-                "Попробуй отправить текст вместо скриншота.",
-                "Или используй более четкое изображение."
+                "Попробуй отправить текст.",
+                "Используй более четкий скриншот."
             ]
 
     async def transcribe_audio(self, audio_path: str) -> str:
-        """Транскрипция аудио"""
+        """Транскрипция голоса"""
         try:
             with open(audio_path, "rb") as audio_file:
                 response = self.client.audio.transcriptions.create(
@@ -257,10 +231,7 @@ class AIAssistant:
                     model=self.audio_model,
                     response_format="text"
                 )
-                result = response.strip()
-                logger.info(f"🎤 Транскрипция: {result[:50]}...")
-                return result
-                
+                return response.strip()
         except Exception as e:
             logger.error(f"❌ Ошибка транскрипции: {e}")
             return ""
